@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld('lokan', {
   save: state => ipcRenderer.invoke('data:save', state),
   export: () => ipcRenderer.invoke('data:export'),
   import: () => ipcRenderer.invoke('data:import'),
-  dataPath: () => ipcRenderer.invoke('data:path')
+  dataPath: () => ipcRenderer.invoke('data:path'),
+  openLink: url => ipcRenderer.invoke('link:open', url)
 });

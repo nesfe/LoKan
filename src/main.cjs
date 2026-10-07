@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, session, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, Menu, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
@@ -73,19 +73,21 @@ app.whenReady().then(() => {
   ipcMain.handle('data:export', async event => {
     checkSender(event);
     await saveQueue;
+    const { state } = await readState();
     const result = await dialog.showSaveDialog(window, {
-      title: 'Экспорт данных LoKan', defaultPath: `LoKan-${new Date().toISOString().slice(0, 10)}.json`,
+      title: state.language === 'en' ? 'Export LoKan data' : 'Экспорт данных LoKan', defaultPath: `LoKan-${new Date().toISOString().slice(0, 10)}.json`,
       filters: [{ name: 'JSON', extensions: ['json'] }]
     });
     if (result.canceled || !result.filePath) return false;
-    const { state } = await readState();
     await fs.writeFile(result.filePath, JSON.stringify(state, null, 2), 'utf8');
     return true;
   });
   ipcMain.handle('data:import', async event => {
     checkSender(event);
+    await saveQueue.catch(() => {});
+    const { state: current } = await readState();
     const result = await dialog.showOpenDialog(window, {
-      title: 'Импорт данных LoKan', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }]
+      title: current.language === 'en' ? 'Import LoKan data' : 'Импорт данных LoKan', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }]
     });
     if (result.canceled || !result.filePaths[0]) return null;
     const { normalizeState } = await model();
@@ -95,6 +97,16 @@ app.whenReady().then(() => {
     return state;
   });
   ipcMain.handle('data:path', event => { checkSender(event); return dataFile(); });
+  ipcMain.handle('link:open', async (event, value) => {
+    checkSender(event);
+    await saveQueue.catch(() => {});
+    const { normalizeLink } = await model();
+    if (typeof value !== 'string' || value.length > 2048 || normalizeLink(value) !== value) throw new Error('Invalid link');
+    const { state } = await readState();
+    if (!state.boards.some(board => board.cards.some(card => card.link === value))) throw new Error('Link not found');
+    await shell.openExternal(value);
+    return true;
+  });
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

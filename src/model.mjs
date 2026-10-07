@@ -2,16 +2,34 @@ export const COLORS = ['#6877f4', '#55b7a0', '#f0ab62', '#dd789d', '#a989e8', '#
 export const PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'];
 const makeId = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
+const DEFAULT_NAMES = {
+  ru: { board: 'Моя доска', columns: ['Входящие', 'К работе', 'В работе', 'Проверка', 'Готово'] },
+  en: { board: 'My board', columns: ['Inbox', 'To do', 'In progress', 'Review', 'Done'] }
+};
 
-export function createBoard(name = 'Моя доска') {
+export function normalizeLink(value) {
+  const input = typeof value === 'string' ? value.trim() : '';
+  if (!input) return '';
+  if (input.length > 2048 || /[\s\\]/.test(input)) return '';
+  try {
+    const hasProtocol = /^https?:\/\//i.test(input);
+    if (!hasProtocol && (input.includes('://') || (/^[a-z][a-z\d+.-]*:/i.test(input) && !/^[^/:]+:\d+(?:[/?#]|$)/.test(input)))) return '';
+    const url = new URL(hasProtocol ? input : `https://${input}`);
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return '';
+    return url.href;
+  } catch { return ''; }
+}
+
+export function createBoard(name, language = 'ru') {
+  const defaults = DEFAULT_NAMES[language] || DEFAULT_NAMES.ru;
   return {
-    id: makeId(), name: name.trim() || 'Моя доска', color: COLORS[0], nextNumber: 1,
+    id: makeId(), name: typeof name === 'string' && name.trim() ? name.trim() : defaults.board, color: COLORS[0], nextNumber: 1,
     columns: [
-      { id: makeId(), name: 'Входящие', color: '#8d98a8', limit: null },
-      { id: makeId(), name: 'К работе', color: '#6877f4', limit: null },
-      { id: makeId(), name: 'В работе', color: '#f0ab62', limit: 5 },
-      { id: makeId(), name: 'Проверка', color: '#a989e8', limit: null },
-      { id: makeId(), name: 'Готово', color: '#55b7a0', limit: null }
+      { id: makeId(), name: defaults.columns[0], color: '#8d98a8', limit: null },
+      { id: makeId(), name: defaults.columns[1], color: '#6877f4', limit: null },
+      { id: makeId(), name: defaults.columns[2], color: '#f0ab62', limit: 5 },
+      { id: makeId(), name: defaults.columns[3], color: '#a989e8', limit: null },
+      { id: makeId(), name: defaults.columns[4], color: '#55b7a0', limit: null }
     ],
     tags: [], cards: []
   };
@@ -19,7 +37,7 @@ export function createBoard(name = 'Моя доска') {
 
 export function createInitialState() {
   const board = createBoard();
-  return { version: 1, activeBoardId: board.id, theme: 'dark', boards: [board] };
+  return { version: 1, activeBoardId: board.id, theme: 'dark', language: 'ru', boards: [board] };
 }
 
 const str = (value, max = 5000) => typeof value === 'string' ? value.slice(0, max) : '';
@@ -28,18 +46,19 @@ const id = value => typeof value === 'string' && value.length < 100 && value.len
 
 export function normalizeState(raw) {
   if (!raw || raw.version !== 1 || !Array.isArray(raw.boards)) throw new Error('Неподдерживаемый формат данных');
+  const language = raw.language === 'en' ? 'en' : 'ru';
   const boards = raw.boards.slice(0, 100).map(source => {
     const columns = (Array.isArray(source.columns) ? source.columns : []).slice(0, 30).map(item => ({
-      id: id(item.id), name: str(item.name, 80) || 'Колонка', color: color(item.color),
+      id: id(item.id), name: str(item.name, 80) || (language === 'en' ? 'Column' : 'Колонка'), color: color(item.color),
       limit: Number.isInteger(item.limit) && item.limit > 0 && item.limit < 10000 ? item.limit : null
     }));
-    if (!columns.length) columns.push({ id: makeId(), name: 'Задачи', color: COLORS[0], limit: null });
+    if (!columns.length) columns.push({ id: makeId(), name: language === 'en' ? 'Tasks' : 'Задачи', color: COLORS[0], limit: null });
     const tags = (Array.isArray(source.tags) ? source.tags : []).slice(0, 200).map(item => ({
       id: id(item.id), name: str(item.name, 40), color: color(item.color)
     }));
     const cards = (Array.isArray(source.cards) ? source.cards : []).slice(0, 50000).map(item => ({
       id: id(item.id), number: Number.isInteger(item.number) && item.number > 0 ? item.number : 1,
-      title: str(item.title, 200) || 'Без названия', description: str(item.description, 20000),
+      title: str(item.title, 200) || (language === 'en' ? 'Untitled' : 'Без названия'), description: str(item.description, 20000), link: normalizeLink(item.link),
       columnId: columns.some(c => c.id === item.columnId) ? item.columnId : columns[0].id,
       priority: PRIORITIES.includes(item.priority) ? item.priority : 'none',
       color: /^#[0-9a-fA-F]{6}$/.test(item.color) ? item.color : '',
@@ -53,14 +72,14 @@ export function normalizeState(raw) {
     }));
     const maxNumber = Math.max(0, ...cards.map(c => c.number));
     return {
-      id: id(source.id), name: str(source.name, 80) || 'Доска', color: color(source.color),
+      id: id(source.id), name: str(source.name, 80) || (language === 'en' ? 'Board' : 'Доска'), color: color(source.color),
       nextNumber: Math.max(maxNumber + 1, Number.isInteger(source.nextNumber) ? source.nextNumber : 1),
       columns, tags, cards
     };
   });
-  if (!boards.length) boards.push(createBoard());
+  if (!boards.length) boards.push(createBoard(undefined, language));
   return {
-    version: 1, theme: raw.theme === 'light' ? 'light' : 'dark',
+    version: 1, theme: raw.theme === 'light' ? 'light' : 'dark', language,
     activeBoardId: boards.some(b => b.id === raw.activeBoardId) ? raw.activeBoardId : boards[0].id,
     boards
   };
@@ -74,7 +93,7 @@ export function updateState(state, action) {
   const card = () => board.cards.find(c => c.id === action.id);
   switch (action.type) {
     case 'board.add': {
-      const added = createBoard(action.name);
+      const added = createBoard(action.name, next.language);
       next.boards.push(added); next.activeBoardId = added.id; break;
     }
     case 'board.select':
@@ -88,7 +107,7 @@ export function updateState(state, action) {
       if (next.boards.length > 1) { next.boards = next.boards.filter(b => b.id !== board.id); next.activeBoardId = next.boards[0].id; }
       break;
     case 'column.add':
-      board.columns.push({ id: makeId(), name: str(action.name, 80).trim() || 'Новая колонка', color: color(action.color || COLORS[0]), limit: null });
+      board.columns.push({ id: makeId(), name: str(action.name, 80).trim() || (next.language === 'en' ? 'New column' : 'Новая колонка'), color: color(action.color || COLORS[0]), limit: null });
       break;
     case 'column.update': {
       const column = board.columns.find(c => c.id === action.id);
@@ -129,8 +148,8 @@ export function updateState(state, action) {
       const columnId = board.columns.some(c => c.id === action.columnId) ? action.columnId : board.columns[0].id;
       const order = Math.max(-1, ...board.cards.filter(c => c.columnId === columnId && !c.archived).map(c => c.order)) + 1;
       const created = now();
-      board.cards.push({ id: makeId(), number: board.nextNumber++, title: str(action.title, 200).trim() || 'Новая задача',
-        description: '', columnId, priority: 'none', color: '', dueDate: '', tagIds: [], checklist: [],
+      board.cards.push({ id: makeId(), number: board.nextNumber++, title: str(action.title, 200).trim() || (next.language === 'en' ? 'New task' : 'Новая задача'),
+        description: '', link: '', columnId, priority: 'none', color: '', dueDate: '', tagIds: [], checklist: [],
         createdAt: created, updatedAt: created, archived: false, order });
       break;
     }
@@ -138,6 +157,7 @@ export function updateState(state, action) {
       const item = card(); if (!item) break;
       if (action.title !== undefined) item.title = str(action.title, 200).trim() || item.title;
       if (action.description !== undefined) item.description = str(action.description, 20000);
+      if (action.link !== undefined) item.link = normalizeLink(action.link);
       if (action.priority !== undefined && PRIORITIES.includes(action.priority)) item.priority = action.priority;
       if (action.color !== undefined) item.color = /^#[0-9a-fA-F]{6}$/.test(action.color) ? action.color : '';
       if (action.dueDate !== undefined) item.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(action.dueDate) ? action.dueDate : '';
@@ -170,6 +190,19 @@ export function updateState(state, action) {
       const item = card(); if (item) { item.checklist = item.checklist.filter(c => c.id !== action.checkId); item.updatedAt = now(); } break;
     }
     case 'theme.set': next.theme = action.theme === 'light' ? 'light' : 'dark'; break;
+    case 'language.set': {
+      const previous = next.language === 'en' ? 'en' : 'ru';
+      const language = action.language === 'en' ? 'en' : 'ru';
+      if (previous === language) break;
+      for (const item of next.boards) {
+        if (item.name === DEFAULT_NAMES[previous].board) item.name = DEFAULT_NAMES[language].board;
+        for (const column of item.columns) {
+          const index = DEFAULT_NAMES[previous].columns.indexOf(column.name);
+          if (index >= 0) column.name = DEFAULT_NAMES[language].columns[index];
+        }
+      }
+      next.language = language; break;
+    }
     default: return state;
   }
   return next;

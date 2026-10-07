@@ -32,6 +32,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .sidebar-action { width:100%; display:flex; align-items:center; gap:12px; text-align:left; background:transparent; border:0; color:var(--muted); border-radius:8px; padding:10px 13px; }
 .sidebar-action:hover { color:var(--text); background:var(--hover); }
 .sidebar-action span { font-size:17px; }
+.sidebar-action span[data-i18n] { font-size:14px; }
+.language-switch { display:flex; gap:4px; margin:5px 4px 0; padding:4px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+.language-switch button { flex:1; border:0; background:transparent; color:var(--muted); border-radius:5px; padding:7px; font-size:11px; font-weight:800; letter-spacing:.5px; }
+.language-switch button.active { background:var(--soft); color:var(--text); }
+.language-switch button:hover:not(.active) { color:var(--text); background:var(--hover); }
 .main-area { flex:1; min-width:0; display:flex; flex-direction:column; }
 .topbar { height:68px; border-bottom:1px solid var(--line); padding:0 34px; display:flex; align-items:center; justify-content:space-between; flex:none; }
 .breadcrumb { display:flex; align-items:center; gap:13px; font-size:12px; color:var(--muted); }
@@ -86,6 +91,10 @@ textarea { resize:vertical; line-height:1.55; }
 .priority::before { content:""; width:5px; height:5px; border-radius:50%; background:currentColor; }
 .priority.low { color:#8bbab2; } .priority.medium { color:#e5b96e; } .priority.high { color:#e98d72; } .priority.urgent { color:#f3768d; }
 .task-title { font-size:13px; font-weight:650; line-height:1.43; overflow-wrap:anywhere; }
+.task-title-link { display:block; width:100%; padding:0; border:0; background:transparent; color:var(--text); text-align:left; cursor:pointer; }
+.task-title-link:hover { color:var(--accent); text-decoration:underline; text-underline-offset:2px; }
+.task-link-icon { border:0; background:var(--soft); color:var(--accent); border-radius:5px; width:23px; height:23px; font-size:13px; line-height:1; }
+.task-link-icon:hover { background:var(--accent-deep); color:#fff; }
 .task-description { font-size:11px; color:var(--muted); margin-top:6px; line-height:1.45; max-height:32px; overflow:hidden; }
 .task-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:12px; }
 .tag { display:inline-flex; align-items:center; padding:4px 7px; border-radius:5px; font-size:10px; font-weight:700; }
