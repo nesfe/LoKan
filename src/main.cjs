@@ -4,6 +4,7 @@ const path = require('node:path');
 
 app.setName('LoKan');
 app.setAppUserModelId('app.lokan.desktop');
+app.disableHardwareAcceleration();
 let window;
 let saveQueue = Promise.resolve();
 const dataFile = () => path.join(app.getPath('userData'), 'lokan.json');

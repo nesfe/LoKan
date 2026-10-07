@@ -1,6 +1,6 @@
 {
   "name": "lokan",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local kanban board",
   "main": "src/main.cjs",
   "author": "LoKan contributors",
@@ -19,10 +19,34 @@
   "build": {
     "appId": "app.lokan.desktop",
     "productName": "LoKan",
-    "files": ["src/**/*", "assets/**/*", "package.json", "LICENSE"],
-    "directories": { "output": "dist" },
-    "linux": { "category": "Office", "icon": "assets/icon.png", "target": ["AppImage"] },
-    "win": { "icon": "assets/icon.ico", "target": ["nsis"], "signExecutable": false },
-    "mac": { "category": "public.app-category.productivity", "target": ["dmg"] }
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "linux": {
+      "category": "Office",
+      "icon": "assets/icon.png",
+      "target": [
+        "AppImage"
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis"
+      ],
+      "signExecutable": false
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ]
+    }
   }
 }
