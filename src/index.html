@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>LoKan — Local kanban board</title>
+  <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><img src="../assets/icon.svg" alt=""><div><strong>LoKan</strong><small>LOCAL KANBAN BOARD</small></div></div>
+      <div class="workspace-heading"><span>РАБОЧЕЕ ПРОСТРАНСТВО</span><button type="button" id="add-board" class="icon-button" title="Создать доску" aria-label="Создать доску">＋</button></div>
+      <nav id="board-list" class="board-list" aria-label="Доски"></nav>
+      <div class="sidebar-bottom">
+        <div class="local-pill"><span class="local-dot"></span><div><strong>Локально и приватно</strong><small>Данные на этом устройстве</small></div></div>
+        <button id="open-settings" class="sidebar-action" type="button"><span>⚙</span> Настройки</button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="breadcrumb"><span>Доски</span><span class="chevron">›</span><strong id="breadcrumb-board"></strong></div>
+        <div class="top-actions"><span id="save-state" class="save-state">● Сохранено</span><button id="theme-toggle" class="icon-button top-icon" type="button" title="Сменить тему" aria-label="Сменить тему">☾</button></div>
+      </header>
+      <section class="content-header">
+        <div class="title-row"><div><div class="eyebrow">ВАША ДОСКА</div><h1 id="board-title"></h1><p id="board-subtitle"></p></div><div class="header-buttons"><button id="show-archive" class="button secondary" type="button">Архив <span id="archive-count" class="button-count">0</span></button><button id="new-card" class="button primary" type="button"><span>＋</span> Новая задача</button></div></div>
+        <div class="toolbar"><label class="search-field"><span>⌕</span><input id="search" type="search" placeholder="Поиск по задачам..." aria-label="Поиск по задачам"><kbd>⌘ K</kbd></label><select id="filter-priority" aria-label="Фильтр по приоритету"><option value="">Все приоритеты</option><option value="urgent">Срочно</option><option value="high">Высокий</option><option value="medium">Средний</option><option value="low">Низкий</option><option value="none">Без приоритета</option></select><select id="filter-tag" aria-label="Фильтр по тегу"><option value="">Все теги</option></select><select id="filter-due" aria-label="Фильтр по сроку"><option value="">Все сроки</option><option value="overdue">Просрочены</option><option value="today">На сегодня</option><option value="week">В ближайшие 7 дней</option><option value="none">Без срока</option></select><button id="clear-filters" class="text-button" type="button" hidden>Сбросить</button></div>
+      </section>
+      <div class="board-scroll"><div id="board" class="board" aria-label="Канбан-доска"></div></div>
+      <footer class="statusbar"><span id="board-stats"></span><span>Перетащите задачу, чтобы изменить статус · <kbd>N</kbd> новая задача</span></footer>
+    </main>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="renderer.mjs"></script>
+</body>
+</html>

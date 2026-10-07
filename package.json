@@ -1,0 +1,28 @@
+{
+  "name": "lokan",
+  "version": "1.0.0",
+  "description": "Local kanban board",
+  "main": "src/main.cjs",
+  "author": "LoKan contributors",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "app.lokan.desktop",
+    "productName": "LoKan",
+    "files": ["src/**/*", "assets/**/*", "package.json", "LICENSE"],
+    "directories": { "output": "dist" },
+    "linux": { "category": "Office", "icon": "assets/icon.png", "target": ["AppImage"] },
+    "win": { "icon": "assets/icon.ico", "target": ["nsis"], "signExecutable": false },
+    "mac": { "category": "public.app-category.productivity", "target": ["dmg"] }
+  }
+}
