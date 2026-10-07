@@ -9,7 +9,7 @@
     "start": "electron .",
     "test": "node --test",
     "dist:linux": "electron-builder --linux AppImage",
-    "dist:win": "electron-builder --win nsis",
+    "dist:win": "electron-builder --win nsis --publish never",
     "dist:mac": "electron-builder --mac dmg"
   },
   "devDependencies": {
