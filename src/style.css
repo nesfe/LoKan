@@ -85,15 +85,15 @@ textarea { resize:vertical; line-height:1.55; }
 .task-card:hover { transform:translateY(-2px); border-color:#6877f480; }
 .task-card:active { cursor:grabbing; }
 .task-card.dragging { opacity:.35; }
-.task-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-.task-number { color:var(--muted); font:10px ui-monospace,monospace; font-weight:700; }
-.priority { display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:700; }
+.task-meta { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; margin-bottom:10px; }
+.task-number { grid-column:1; justify-self:start; color:var(--muted); font:10px ui-monospace,monospace; font-weight:700; }
+.priority { grid-column:2; justify-self:center; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; font-size:10px; font-weight:700; }
 .priority::before { content:""; width:5px; height:5px; border-radius:50%; background:currentColor; }
 .priority.low { color:#8bbab2; } .priority.medium { color:#e5b96e; } .priority.high { color:#e98d72; } .priority.urgent { color:#f3768d; }
 .task-title { font-size:13px; font-weight:650; line-height:1.43; overflow-wrap:anywhere; }
 .task-title-link { display:block; width:100%; padding:0; border:0; background:transparent; color:var(--text); text-align:left; cursor:pointer; }
 .task-title-link:hover { color:var(--accent); text-decoration:underline; text-underline-offset:2px; }
-.task-link-icon { border:0; background:var(--soft); color:var(--accent); border-radius:5px; width:23px; height:23px; font-size:13px; line-height:1; }
+.task-link-icon { grid-column:3; justify-self:end; border:0; background:var(--soft); color:var(--accent); border-radius:5px; width:23px; height:23px; font-size:13px; line-height:1; }
 .task-link-icon:hover { background:var(--accent-deep); color:#fff; }
 .task-description { font-size:11px; color:var(--muted); margin-top:6px; line-height:1.45; max-height:32px; overflow:hidden; }
 .task-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:12px; }
