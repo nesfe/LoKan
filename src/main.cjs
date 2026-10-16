@@ -122,14 +122,15 @@ app.whenReady().then(() => {
   ipcMain.handle('sync:disconnect', event => { checkSender(event); return sync.disconnect(); });
   ipcMain.handle('sync:now', event => { checkSender(event); return sync.run(); });
   ipcMain.handle('sync:key-file', event => { checkSender(event); return sync.chooseKey(window, dialog); });
-  ipcMain.handle('sync:invite', event => {
+  ipcMain.handle('sync:invite', async (event, name) => {
     checkSender(event);
-    const { host, port, username, fingerprint } = sync.publicStatus();
-    if (!fingerprint) throw new Error('Connect to a server first');
-    const code = `LoKan:${Buffer.from(JSON.stringify({ host, port, username, fingerprint })).toString('base64url')}`;
+    const code = await sync.createInvite(name);
     clipboard.writeText(code);
-    return code;
+    return true;
   });
+  ipcMain.handle('sync:invite-list', event => { checkSender(event); return sync.listInvites(); });
+  ipcMain.handle('sync:revoke', (event, id) => { checkSender(event); return sync.revokeInvite(id); });
+  ipcMain.handle('sync:join', (event, code, name) => { checkSender(event); return sync.joinInvite(code, name); });
   ipcMain.handle('mcp:status', async event => { checkSender(event); await mcpReady; return mcp.status(); });
   ipcMain.handle('mcp:configure', async (event, options) => { checkSender(event); await mcpReady; return mcp.configure(options); });
   ipcMain.handle('mcp:rotate', async event => { checkSender(event); await mcpReady; return mcp.rotate(); });

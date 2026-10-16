@@ -149,6 +149,11 @@ textarea { resize:vertical; line-height:1.55; }
 .settings-add input { flex:1; }
 .settings-add .button { min-width:90px; justify-content:center; }
 .settings-actions { display:flex; gap:9px; flex-wrap:wrap; }
+.invite-name { flex:1; overflow:hidden; text-overflow:ellipsis; }
+#sync-owner-details { margin-top:8px; border:1px solid var(--line); border-radius:9px; padding:13px 15px; }
+#sync-owner-details summary { cursor:pointer; font-weight:700; color:var(--text); }
+.sync-main-action { margin-top:16px; }
+#sync-copy-invite { white-space:normal; text-align:center; justify-content:center; }
 .settings-note { font-size:11px; color:var(--muted); line-height:1.6; margin:11px 0; }
 .sync-grid { display:grid; grid-template-columns:minmax(0,1fr) 160px; gap:12px; align-items:end; margin:12px 0; }
 .sync-grid label,#sync-password-fields label,#sync-key-fields>label { display:flex; flex-direction:column; gap:6px; min-width:0; color:var(--muted); font-size:11px; font-weight:700; }

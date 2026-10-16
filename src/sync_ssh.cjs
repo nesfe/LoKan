@@ -1,9 +1,10 @@
-const { Client } = require('ssh2');
+const { Client, utils: { parseKey } } = require('ssh2');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
 const SERVER_COMMAND = 'python3 "$HOME/.local/share/lokan-sync/server.py"';
+const ADMIN_COMMAND = 'python3 "$HOME/.local/share/lokan-sync/sync_admin.py"';
 const MAX_OUTPUT = 16 * 1024 * 1024;
 
 const fingerprint = key => `SHA256:${createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`;
@@ -35,7 +36,7 @@ function connect(config, verify) {
         host: config.host, port: config.port, username: config.username,
         readyTimeout: 12000, keepaliveInterval: 20000, keepaliveCountMax: 3,
         hostVerifier: key => verify(fingerprint(key)),
-        ...(config.authMode === 'key'
+        ...(['key', 'invite'].includes(config.authMode)
           ? { privateKey: config.privateKey, passphrase: config.passphrase || undefined }
           : { password: config.password })
       });
@@ -59,7 +60,9 @@ async function probe(config) {
 async function authenticate(config) {
   validateConnection(config);
   if (typeof config.fingerprint !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/.test(config.fingerprint)) throw new Error('Verify the server fingerprint first');
-  if (config.authMode === 'key') {
+  if (config.authMode === 'invite') {
+    if (typeof config.privateKey !== 'string' || config.privateKey.length > 10000 || parseKey(config.privateKey) instanceof Error) throw new Error('Invalid invite key');
+  } else if (config.authMode === 'key') {
     if (typeof config.keyPath !== 'string' || !path.isAbsolute(config.keyPath)) throw new Error('Select a private key file');
     const stat = await fs.stat(config.keyPath);
     if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error('Invalid private key file');
@@ -98,10 +101,20 @@ function execute(client, command, input = '') {
 }
 
 async function installServer(client) {
-  const script = await fs.readFile(path.join(__dirname, 'sync_server.py'));
-  const encoded = script.toString('base64');
-  const source = `import base64,pathlib,os; p=pathlib.Path.home()/".local"/"share"/"lokan-sync"; p.mkdir(parents=True,exist_ok=True,mode=0o700); p.chmod(0o700); f=p/"server.py"; t=p/"server.py.tmp"; t.write_bytes(base64.b64decode("${encoded}")); t.chmod(0o600); t.replace(f)`;
-  await execute(client, `python3 -c '${source}'`);
+  for (const filename of ['sync_admin.py', 'sync_server.py']) {
+    const script = await fs.readFile(path.join(__dirname, filename));
+    const encoded = script.toString('base64');
+    const target = filename === 'sync_admin.py' ? 'sync_admin.py' : 'server.py';
+    const source = `import base64,pathlib,os; p=pathlib.Path.home()/".local"/"share"/"lokan-sync"; p.mkdir(parents=True,exist_ok=True,mode=0o700); p.chmod(0o700); f=p/"${target}"; t=p/"${target}.tmp"; t.write_bytes(base64.b64decode("${encoded}")); t.chmod(0o600); t.replace(f)`;
+    await execute(client, `python3 -c '${source}'`);
+  }
+}
+
+async function manageInvites(client, request) {
+  const response = await execute(client, ADMIN_COMMAND, JSON.stringify(request));
+  const parsed = JSON.parse(response);
+  if (!Array.isArray(parsed.invites)) throw new Error('Invalid invite response');
+  return parsed.invites;
 }
 
 async function exchange(client, request) {
@@ -112,4 +125,4 @@ async function exchange(client, request) {
   return parsed;
 }
 
-module.exports = { probe, authenticate, execute, installServer, exchange, fingerprint, validateConnection };
+module.exports = { probe, authenticate, execute, installServer, exchange, manageInvites, fingerprint, validateConnection };

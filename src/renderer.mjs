@@ -168,10 +168,11 @@ function renderSyncLabel() {
 
 function syncDialog() {
   const info = syncInfo;
-  const connected = Boolean(info.fingerprint);
-  const body = `<div class="section-title">${tr('syncConnection')}</div>
+  const configured = Boolean(info.role);
+  const owner = info.role === 'owner';
+  const status = `<p id="sync-status-text" class="settings-note">${escape(t({ local:'syncLocal', connected:'syncConnected', syncing:'syncInProgress', offline:'syncOffline', needsAuth:'syncNeedsAuth', error:'syncOffline' }[info.status] || 'syncLocal'))}${info.error ? ` · ${escape(info.error)}` : ''}</p>`;
+  const ownerForm = `<details id="sync-owner-details"><summary>${tr(configured ? 'syncEditServer' : 'syncCreateTeam')}</summary>
     <p class="settings-note">${tr('syncExplanation')}</p>
-    <div class="sync-grid"><label>${tr('syncInviteCode')}<input id="sync-invite" type="text" autocomplete="off" placeholder="LoKan:..."></label><button type="button" id="sync-use-invite" class="button secondary">${tr('syncUseInvite')}</button></div>
     <div class="sync-grid"><label>${tr('syncHost')}<input id="sync-host" type="text" autocomplete="off" value="${escape(info.host)}" placeholder="192.0.2.10"></label><label>${tr('syncPort')}<input id="sync-port" type="number" min="1" max="65535" value="${escape(info.port)}"></label></div>
     <div class="sync-grid"><label>${tr('syncUser')}<input id="sync-user" type="text" autocomplete="username" value="${escape(info.username)}" placeholder="lokan"></label><label>${tr('syncAuth')}<select id="sync-auth"><option value="password">${tr('syncPassword')}</option><option value="key">${tr('syncKey')}</option></select></label></div>
     <label class="sync-name">${tr('syncDisplayName')}<input id="sync-display-name" type="text" maxlength="80" value="${escape(info.displayName)}" placeholder="${tr('syncDisplayNamePlaceholder')}"></label>
@@ -180,59 +181,77 @@ function syncDialog() {
     <div class="section-title">${tr('syncVerify')}</div><p class="settings-note">${tr('syncVerifyHint')}</p>
     <div class="settings-actions"><button id="sync-probe" type="button" class="button secondary">${tr('syncCheckHost')}</button><code id="sync-fingerprint" class="sync-fingerprint">${escape(info.fingerprint || '—')}</code></div>
     <label class="sync-confirm"><input id="sync-trust" type="checkbox"> ${tr('syncTrust')}</label>
-    <p id="sync-status-text" class="settings-note">${escape(t({ local:'syncLocal', connected:'syncConnected', syncing:'syncInProgress', offline:'syncOffline', needsAuth:'syncNeedsAuth', error:'syncOffline' }[info.status] || 'syncLocal'))}${info.error ? ` · ${escape(info.error)}` : ''}</p>
-    ${connected ? `<div class="section-title">${tr('syncTeam')}</div><p class="settings-note">${tr('syncTeamHint')}</p><div class="settings-actions"><button id="sync-copy-invite" type="button" class="button secondary">${tr('syncCopyInvite')}</button><button id="sync-now" type="button" class="button secondary">${tr('syncNow')}</button><button id="sync-disconnect" type="button" class="button secondary">${tr('syncDisconnect')}</button></div>` : ''}`;
-  openModal(t('syncTitle'), t('syncSubtitle'), body, `<div class="right"><button type="button" class="button primary" id="sync-connect">${tr('syncConnect')}</button></div>`, true);
-  $('#sync-auth').value = info.authMode;
-  const authChanged = () => {
-    const key = $('#sync-auth').value === 'key';
-    $('#sync-password-fields').hidden = key;
-    $('#sync-key-fields').hidden = !key;
+    <div class="settings-actions sync-main-action"><button type="button" class="button primary" id="sync-connect">${tr('syncConnect')}</button></div></details>`;
+  const joinForm = `<div class="section-title">${tr('syncJoinTeam')}</div><p class="settings-note">${tr('syncJoinHint')}</p>
+    <label class="sync-name">${tr('syncInviteCode')}<input id="sync-invite" type="text" autocomplete="off" spellcheck="false" placeholder="LoKanInvite:..."></label>
+    <label class="sync-name">${tr('syncDisplayName')}<input id="sync-join-name" type="text" maxlength="80" placeholder="${tr('syncDisplayNamePlaceholder')}"></label>
+    <div class="settings-actions"><button type="button" id="sync-join" class="button primary">${tr('syncJoin')}</button></div>`;
+  const team = owner ? `<div class="section-title">${tr('syncTeam')}</div><p class="settings-note">${tr('syncTeamHint')}</p>
+    <div class="sync-grid"><label>${tr('syncInviteName')}<input id="sync-invite-name" type="text" maxlength="80" placeholder="${tr('syncInviteNamePlaceholder')}"></label><button id="sync-copy-invite" type="button" class="button secondary">${tr('syncCopyInvite')}</button></div>
+    <div id="sync-invite-list" class="settings-list"></div>` : configured ? `<p class="settings-note">${tr('syncMemberHint')}</p>` : '';
+  const actions = configured ? `<div class="settings-actions"><button id="sync-now" type="button" class="button secondary">${tr('syncNow')}</button><button id="sync-disconnect" type="button" class="button danger">${tr('syncDisconnect')}</button></div>` : '';
+  const body = configured ? `<div class="section-title">${tr('syncConnection')}</div><p class="settings-note">${escape(info.username)}@${escape(info.host)}:${escape(info.port)}</p>${status}${team}${actions}${owner ? ownerForm : ''}` : `${joinForm}<div class="section-title">${tr('syncOrCreate')}</div>${ownerForm}${status}`;
+  openModal(t('syncTitle'), t('syncSubtitle'), body, '', true);
+
+  if (!configured) $('#sync-join').onclick = async () => {
+    const code = $('#sync-invite').value.trim(), name = $('#sync-join-name').value.trim();
+    if (code.startsWith('LoKan:')) { toast(t('syncOldInvite')); return; }
+    if (!code.startsWith('LoKanInvite:')) { toast(t('syncInvalidInvite')); return; }
+    const join = async () => {
+      try { syncInfo = await window.lokan.syncJoin(code, name); renderSyncLabel(); closeModal(); toast(t('syncConnected')); }
+      catch (error) { syncDialog(); toast(t('syncError', { error: error.message })); }
+    };
+    if (state.boards.length > 1 || state.boards.some(board => board.cards.length))
+      confirmAction(t('syncJoinConfirmTitle'), t('syncJoinConfirmBody'), t('syncJoin'), join);
+    else await join();
   };
-  $('#sync-auth').onchange = authChanged; authChanged();
-  let verified = info.fingerprint;
-  const setFingerprint = value => { verified = value; $('#sync-fingerprint').textContent = value || '—'; $('#sync-trust').checked = false; };
-  $('#sync-host').oninput = () => setFingerprint('');
-  $('#sync-port').oninput = () => setFingerprint('');
-  $('#sync-user').oninput = () => setFingerprint('');
-  $('#sync-pick-key').onclick = async () => { const file = await window.lokan.syncKeyFile(); if (file) $('#sync-key-path').value = file; };
-  $('#sync-use-invite').onclick = () => {
-    try {
-      const code = $('#sync-invite').value.trim();
-      if (!code.startsWith('LoKan:') || code.length > 2000) throw new Error();
-      const raw = code.slice(6).replace(/-/g, '+').replace(/_/g, '/');
-      const invite = JSON.parse(atob(raw));
-      if (typeof invite.host !== 'string' || !Number.isInteger(invite.port) || typeof invite.username !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/.test(invite.fingerprint)) throw new Error();
-      $('#sync-host').value = invite.host; $('#sync-port').value = invite.port; $('#sync-user').value = invite.username;
-      setFingerprint(invite.fingerprint);
-      toast(t('syncInviteApplied'));
-    } catch { toast(t('syncInvalidInvite')); }
-  };
-  $('#sync-probe').onclick = async () => {
-    const button = $('#sync-probe'); button.disabled = true;
-    try {
-      const found = await window.lokan.syncProbe({ host: $('#sync-host').value.trim(), port: Number($('#sync-port').value), username: $('#sync-user').value.trim() });
-      setFingerprint(found);
-      toast(t('syncHostChecked'));
-    } catch (error) { toast(t('syncError', { error: error.message })); }
-    finally { button.disabled = false; }
-  };
-  $('#sync-connect').onclick = async () => {
-    if (!verified || !$('#sync-trust').checked) { toast(t('syncTrustRequired')); return; }
-    const button = $('#sync-connect'); button.disabled = true;
-    try {
-      syncInfo = await window.lokan.syncConnect({
-        host: $('#sync-host').value.trim(), port: Number($('#sync-port').value), username: $('#sync-user').value.trim(), displayName: $('#sync-display-name').value.trim(),
-        authMode: $('#sync-auth').value, password: $('#sync-password').value, keyPath: $('#sync-key-path').value,
-        passphrase: $('#sync-passphrase').value, fingerprint: verified
-      });
-      renderSyncLabel(); closeModal(); toast(t('syncConnected'));
-    } catch (error) { toast(t('syncError', { error: error.message })); button.disabled = false; }
-  };
-  if (connected) {
-    $('#sync-copy-invite').onclick = async () => { try { await window.lokan.syncInvite(); toast(t('syncInviteCopied')); } catch (error) { toast(t('syncError', { error: error.message })); } };
+  if (!configured || owner) {
+    $('#sync-auth').value = info.authMode === 'key' ? 'key' : 'password';
+    const authChanged = () => { const key = $('#sync-auth').value === 'key'; $('#sync-password-fields').hidden = key; $('#sync-key-fields').hidden = !key; };
+    $('#sync-auth').onchange = authChanged; authChanged();
+    let verified = info.fingerprint;
+    const setFingerprint = value => { verified = value; $('#sync-fingerprint').textContent = value || '—'; $('#sync-trust').checked = false; };
+    $('#sync-host').oninput = () => setFingerprint('');
+    $('#sync-port').oninput = () => setFingerprint('');
+    $('#sync-user').oninput = () => setFingerprint('');
+    $('#sync-pick-key').onclick = async () => { const file = await window.lokan.syncKeyFile(); if (file) $('#sync-key-path').value = file; };
+    $('#sync-probe').onclick = async () => {
+      const button = $('#sync-probe'); button.disabled = true;
+      try { setFingerprint(await window.lokan.syncProbe({ host: $('#sync-host').value.trim(), port: Number($('#sync-port').value), username: $('#sync-user').value.trim() })); toast(t('syncHostChecked')); }
+      catch (error) { toast(t('syncError', { error: error.message })); }
+      finally { button.disabled = false; }
+    };
+    $('#sync-connect').onclick = async () => {
+      if (!verified || !$('#sync-trust').checked) { toast(t('syncTrustRequired')); return; }
+      const button = $('#sync-connect'); button.disabled = true;
+      try {
+        syncInfo = await window.lokan.syncConnect({ host: $('#sync-host').value.trim(), port: Number($('#sync-port').value), username: $('#sync-user').value.trim(), displayName: $('#sync-display-name').value.trim(),
+          authMode: $('#sync-auth').value, password: $('#sync-password').value, keyPath: $('#sync-key-path').value, passphrase: $('#sync-passphrase').value, fingerprint: verified });
+        renderSyncLabel(); closeModal(); toast(t('syncConnected'));
+      } catch (error) { toast(t('syncError', { error: error.message })); button.disabled = false; }
+    };
+  }
+  if (configured) {
     $('#sync-now').onclick = async () => { try { syncInfo = await window.lokan.syncNow(); renderSyncLabel(); toast(t('syncFinished')); } catch (error) { toast(t('syncError', { error: error.message })); } };
     $('#sync-disconnect').onclick = async () => { syncInfo = await window.lokan.syncDisconnect(); renderSyncLabel(); closeModal(); toast(t('syncDisconnected')); };
+  }
+  if (owner) {
+    const refreshInvites = async () => {
+      const target = $('#sync-invite-list'); if (!target) return;
+      try {
+        const invites = await window.lokan.syncInvites();
+        target.innerHTML = invites.length ? invites.map(invite => `<div class="settings-row"><span class="invite-name">${escape(invite.name)}</span><button type="button" class="small-button danger" data-revoke-invite="${escape(invite.id)}">${tr('syncRevoke')}</button></div>`).join('') : `<p class="settings-note">${tr('syncNoInvites')}</p>`;
+        target.querySelectorAll('[data-revoke-invite]').forEach(button => button.onclick = () => confirmAction(t('syncRevoke'), t('syncRevokeHint'), t('syncRevoke'), async () => {
+          try { await window.lokan.syncRevoke(button.dataset.revokeInvite); syncDialog(); toast(t('syncRevoked')); }
+          catch (error) { syncDialog(); toast(t('syncError', { error: error.message })); }
+        }));
+      } catch (error) { target.textContent = t('syncError', { error: error.message }); }
+    };
+    $('#sync-copy-invite').onclick = async () => {
+      try { await window.lokan.syncInvite($('#sync-invite-name').value.trim()); toast(t('syncInviteCopied')); refreshInvites(); }
+      catch (error) { toast(t('syncError', { error: error.message })); }
+    };
+    refreshInvites();
   }
 }
 

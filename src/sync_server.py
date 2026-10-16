@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 from pathlib import Path
+from sync_admin import parse_line
 
 MAX_REQUEST = 12 * 1024 * 1024
 ROOT = Path.home() / ".local" / "share" / "lokan-sync"
@@ -17,6 +18,20 @@ def respond(value):
 
 
 def main():
+    if len(sys.argv) > 2:
+        raise ValueError("Invalid command")
+    if len(sys.argv) == 2:
+        invite_id = sys.argv[1]
+        keys = Path.home() / ".ssh" / "authorized_keys"
+        found = False
+        if keys.is_file():
+            for line in keys.read_text(encoding="utf-8").splitlines():
+                parsed = parse_line(line)
+                if parsed is not None and parsed["id"] == invite_id:
+                    found = True
+                    break
+        if not found:
+            raise ValueError("Invite revoked")
     ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(ROOT, 0o700)
     raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
