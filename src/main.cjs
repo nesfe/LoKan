@@ -131,6 +131,13 @@ app.whenReady().then(() => {
   ipcMain.handle('sync:invite-list', event => { checkSender(event); return sync.listInvites(); });
   ipcMain.handle('sync:revoke', (event, id) => { checkSender(event); return sync.revokeInvite(id); });
   ipcMain.handle('sync:join', (event, code, name) => { checkSender(event); return sync.joinInvite(code, name); });
+  ipcMain.handle('cloud:start', async (event, url) => {
+    checkSender(event);
+    const result = await sync.beginCloud(url);
+    await shell.openExternal(result.verificationUrl);
+    return { code: result.code };
+  });
+  ipcMain.handle('cloud:poll', event => { checkSender(event); return sync.pollCloud(); });
   ipcMain.handle('mcp:status', async event => { checkSender(event); await mcpReady; return mcp.status(); });
   ipcMain.handle('mcp:configure', async (event, options) => { checkSender(event); await mcpReady; return mcp.configure(options); });
   ipcMain.handle('mcp:rotate', async event => { checkSender(event); await mcpReady; return mcp.rotate(); });

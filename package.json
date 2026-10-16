@@ -8,6 +8,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "web:start": "node web/server.mjs",
     "test": "node --test",
     "dist:linux": "electron-builder --linux AppImage --publish never",
     "dist:win": "electron-builder --win nsis --publish never",

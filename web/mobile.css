@@ -1,0 +1,48 @@
+@media (max-width: 700px) {
+  .app-shell { min-width:0; height:100dvh; flex-direction:column; }
+  .sidebar { width:100%; padding:12px 14px 7px; border-right:0; border-bottom:1px solid var(--line); gap:4px; }
+  .brand { padding:0 2px 6px; }
+  .brand img { width:27px; height:27px; }
+  .brand strong { font-size:17px; }
+  .brand small { display:none; }
+  .workspace-heading { display:none; }
+  .board-list { flex-direction:row; gap:5px; max-height:41px; overflow-x:auto; overflow-y:hidden; }
+  .board-nav { flex:none; width:auto; padding:8px 10px; font-size:11px; white-space:nowrap; }
+  .board-nav .nav-name { max-width:130px; }
+  .sidebar-bottom { display:flex; align-items:center; gap:5px; padding:0; margin:0; }
+  .sidebar-bottom .local-pill { display:none; }
+  .sidebar-action { width:auto; flex:1; padding:5px 8px; font-size:11px; }
+  .sidebar-action span { font-size:11px; }
+  #open-sync span:first-child { display:none; }
+  #sync-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .language-switch { margin:0; padding:2px; }
+  .language-switch button { padding:5px; }
+  .main-area { min-height:0; }
+  .topbar { height:39px; padding:0 14px; }
+  .top-actions { gap:8px; }
+  .breadcrumb { gap:5px; font-size:11px; }
+  .content-header { padding:15px 14px 12px; }
+  .title-row { align-items:flex-start; gap:8px; }
+  .title-row h1 { font-size:22px; }
+  .title-row p { font-size:10px; }
+  .eyebrow { font-size:8px; margin-bottom:4px; }
+  .header-buttons { gap:5px; flex-wrap:wrap; justify-content:flex-end; }
+  .header-buttons .button { padding:7px 9px; font-size:10px; }
+  .header-buttons .button.primary span:last-child { font-size:10px; font-weight:700; line-height:normal; }
+  .toolbar { flex-wrap:nowrap; overflow-x:auto; gap:6px; margin-top:12px; padding-bottom:4px; }
+  .toolbar .search-field { flex:none; width:160px; min-width:160px; }
+  .toolbar select { flex:none; max-width:135px; }
+  .board-scroll { padding:0 14px 10px; }
+  .board { gap:9px; }
+  .column { width:min(81vw,290px); min-height:260px; }
+  .statusbar { height:23px; padding:0 14px 6px; }
+  .modal-backdrop { padding:0; align-items:flex-end; }
+  .modal,.modal.wide { width:100%; max-height:94dvh; border-radius:16px 16px 0 0; }
+  .modal-header { padding:17px 17px 12px; }
+  .modal-body { padding:16px 17px; }
+  .modal-footer { padding:12px 17px calc(12px + env(safe-area-inset-bottom)); }
+  .field-row,.sync-grid { grid-template-columns:1fr; }
+  .settings-row { flex-wrap:wrap; }
+  .settings-row input[type=text] { min-width:110px; }
+  .toast { right:12px; left:12px; bottom:calc(12px + env(safe-area-inset-bottom)); }
+}

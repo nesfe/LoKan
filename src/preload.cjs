@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('lokan', {
   syncInvites: () => ipcRenderer.invoke('sync:invite-list'),
   syncRevoke: id => ipcRenderer.invoke('sync:revoke', id),
   syncJoin: (code, name) => ipcRenderer.invoke('sync:join', code, name),
+  cloudStart: url => ipcRenderer.invoke('cloud:start', url),
+  cloudPoll: () => ipcRenderer.invoke('cloud:poll'),
   mcpStatus: () => ipcRenderer.invoke('mcp:status'),
   mcpConfigure: options => ipcRenderer.invoke('mcp:configure', options),
   mcpRotate: () => ipcRenderer.invoke('mcp:rotate'),

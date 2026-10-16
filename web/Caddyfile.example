@@ -1,0 +1,4 @@
+# Replace boards.example.com with the HTTPS domain in LOKAN_PUBLIC_URL.
+boards.example.com {
+  reverse_proxy 127.0.0.1:8787
+}

@@ -58,6 +58,22 @@ npm start
 
 Локальные изменения доступны без сети. После восстановления связи LoKan объединяет правки разных задач и разных полей; при одновременной правке одного поля последняя синхронизированная правка побеждает. Новые задачи получают уникальные номера внутри доски. Локальный экспорт JSON остаётся доступен для резервного копирования.
 
+## Веб-версия и облачный вход
+
+В папке `web/` находится веб-версия с мобильной раскладкой и сервер синхронизации. Она использует тот же интерфейс и формат досок, что и настольный LoKan. Пользователь входит через Google или Telegram и открывает свои доски в браузере на компьютере или телефоне. В Telegram Mini App вход выполняется по подписанным данным запуска. Настольное приложение подключается к тому же аккаунту: в **Синхронизация → Войти через Google или Telegram** укажите адрес облака, откройте вход в браузере и подтвердите совпадающий восьмизначный код. SSH для пользователя не нужен. Владелец облака настраивает сервер один раз.
+
+Для собственного облака нужны **Node.js 24**, Linux-сервер и HTTPS-домен. Сервер по умолчанию слушает только `127.0.0.1:8787`; пример обратного прокси — [Caddyfile](web/Caddyfile.example), пример службы — [systemd unit](web/lokan-web.service.example). Установите зависимости командой `npm ci`, задайте переменные окружения и выполните `npm run web:start`:
+
+| Переменная | Значение |
+| --- | --- |
+| `LOKAN_PUBLIC_URL` | Публичный HTTPS-адрес, например `https://boards.example.com` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | OAuth-клиент Google типа Web application; redirect URI: `https://<домен>/auth/google/callback` |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | Токен и имя бота Telegram; привяжите домен через BotFather `/setdomain` |
+| `LOKAN_DATA_DIR` | Закрытый каталог для SQLite, например `/var/lib/lokan-web` |
+| `HOST`, `PORT` | Адрес и порт локального HTTP-сервера; по умолчанию `127.0.0.1:8787` |
+
+Достаточно настроить **один** способ входа. Для Mini App укажите тот же HTTPS-адрес как Main Mini App или пункт меню бота в BotFather. Секреты OAuth и бота храните только на сервере, вне Git. Google и Telegram пока создают **разные аккаунты**: для доступа к тем же доскам на другом устройстве выбирайте тот же способ входа. Облачная синхронизация и прежний SSH-режим независимы; перед переключением режима экспортируйте JSON для резервной копии. Серверная SQLite-база не зашифрована на диске, поэтому нужны резервные копии и доверенный сервер. Вход в веб-версию требует сеть; настольная копия продолжает работать без неё.
+
 ## Управление через MCP
 
 Откройте **Настройки → Настроить доступ для ИИ → Включить MCP**. LoKan запустит MCP-сервер на `http://127.0.0.1:37419/mcp` (порт можно изменить). Нажмите **Копировать настройки подключения** и добавьте скопированный JSON в конфигурацию ИИ-клиента, который поддерживает MCP Streamable HTTP и заголовки авторизации. Пример структуры:
@@ -78,6 +94,10 @@ npm start
 Инструменты MCP позволяют перечислить доски и задачи, найти задачу по номеру или UUID, создать и изменить доску, статус, тег или задачу, переместить и архивировать задачу, изменить чек-лист. Для постоянного удаления нужен параметр `confirm: true`. Изменения ИИ проходят через ту же очередь сохранения, что и действия в окне LoKan, сразу видны в интерфейсе и синхронизируются с командой, если синхронизация включена. Доступ по MCP даёт полный доступ к локальным доскам; подключайте только доверенные ИИ-клиенты.
 
 ## English
+
+### Web and cloud sync
+
+The `web/` directory contains a responsive browser app and a self-hosted cloud server. Run it with Node.js 24 behind an HTTPS reverse proxy. Set `LOKAN_PUBLIC_URL` to the public origin and configure either Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) or Telegram (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`), then run `npm run web:start`. Google's authorized redirect URI is `<origin>/auth/google/callback`. Link the Telegram bot to the domain with BotFather `/setdomain`; set the same URL as its Mini App URL. The server stores per-account boards in SQLite in `LOKAN_DATA_DIR`. Keep provider secrets on the server and back up the database. Google and Telegram identities are separate accounts; use the same provider on each device. On desktop, enter the cloud URL under Sync, sign in through the browser and confirm the short code. The desktop app remains usable offline.
 
 LoKan is a local-first desktop kanban board for Windows, macOS, and Linux. [Download the latest release](https://github.com/nesfe/LoKan/releases/latest). It includes multiple boards, customizable statuses and WIP limits, numbered tasks, drag and drop, priorities, due dates, colors, tags, descriptions, checklists, search, filters, archive, and JSON backup. Add a web link to a task and open it directly from the card title or ↗ icon. Switch between English and Russian at the bottom of the sidebar. Optional team sync connects to your own Linux SSH server with Python 3 using a password or SSH key; no public application port is needed. The owner sets up the server once, then creates a separate secret invitation for each teammate. A teammate pastes the code and enters their name; no separate SSH setup is needed. The owner can revoke each invitation. An invitation contains a restricted private key and must be shared privately; revocation cannot erase data already stored on the teammate's device. Data remains available offline and is stored on the server in SQLite when sync is enabled. The server data is not encrypted at rest. To let an AI client manage boards, open **Settings → Configure AI access → Enable MCP**, then copy the connection settings into an MCP Streamable HTTP client that supports authorization headers. LoKan must remain open. The local server binds to `127.0.0.1`, requires a secret bearer key, and can be disabled or rotated in Settings.
 
