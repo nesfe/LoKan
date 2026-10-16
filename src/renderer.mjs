@@ -13,6 +13,7 @@ let toastTimer;
 let draggingId = null;
 let saveFailed = false;
 let syncInfo = { status: 'local', host: '', port: 22, username: '', displayName: '', authMode: 'password', keyPath: '', fingerprint: '', error: '', lastSync: '' };
+let cloudPendingCode = '';
 
 const $ = selector => document.querySelector(selector);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -158,8 +159,8 @@ function renderSyncLabel() {
   label.textContent = t({ local: 'syncTitle', connected: 'syncConnected', syncing: 'syncInProgress', offline: 'syncOffline', needsAuth: 'syncNeedsAuth', error: 'syncOffline' }[syncInfo.status] || 'syncTitle');
   $('#open-sync').classList.toggle('sync-error', ['offline', 'error', 'needsAuth'].includes(syncInfo.status));
   if (syncInfo.fingerprint) {
-    $('.local-pill strong').textContent = t('syncStorageTitle');
-    $('.local-pill small').textContent = t('syncStorageDetails');
+    $('.local-pill strong').textContent = t(syncInfo.role === 'cloud' ? 'syncCloudSite' : 'syncStorageTitle');
+    $('.local-pill small').textContent = t(syncInfo.role === 'cloud' ? 'syncCloudStorage' : 'syncStorageDetails');
   } else {
     $('.local-pill strong').textContent = t('localPrivate');
     $('.local-pill small').textContent = t('localDetails');
@@ -170,6 +171,7 @@ function syncDialog() {
   const info = syncInfo;
   const configured = Boolean(info.role);
   const owner = info.role === 'owner';
+  const cloud = info.role === 'cloud';
   const status = `<p id="sync-status-text" class="settings-note">${escape(t({ local:'syncLocal', connected:'syncConnected', syncing:'syncInProgress', offline:'syncOffline', needsAuth:'syncNeedsAuth', error:'syncOffline' }[info.status] || 'syncLocal'))}${info.error ? ` · ${escape(info.error)}` : ''}</p>`;
   const ownerForm = `<details id="sync-owner-details"><summary>${tr(configured ? 'syncEditServer' : 'syncCreateTeam')}</summary>
     <p class="settings-note">${tr('syncExplanation')}</p>
@@ -186,12 +188,42 @@ function syncDialog() {
     <label class="sync-name">${tr('syncInviteCode')}<input id="sync-invite" type="text" autocomplete="off" spellcheck="false" placeholder="LoKanInvite:..."></label>
     <label class="sync-name">${tr('syncDisplayName')}<input id="sync-join-name" type="text" maxlength="80" placeholder="${tr('syncDisplayNamePlaceholder')}"></label>
     <div class="settings-actions"><button type="button" id="sync-join" class="button primary">${tr('syncJoin')}</button></div>`;
+  const cloudForm = `<div class="section-title">${tr('syncCloudTitle')}</div><p class="settings-note">${tr(info.cloudAvailable ? 'syncCloudHint' : 'syncCloudUnavailable')}</p>
+    ${info.cloudAvailable ? `<div class="settings-actions"><button type="button" id="sync-cloud-connect" class="button primary" ${cloudPendingCode ? 'disabled' : ''}>${tr('syncCloudConnect')}</button></div>` : ''}
+    ${cloudPendingCode ? `<p class="settings-note">${tr('syncCloudCode', { code: cloudPendingCode })}</p>` : ''}`;
   const team = owner ? `<div class="section-title">${tr('syncTeam')}</div><p class="settings-note">${tr('syncTeamHint')}</p>
     <div class="sync-grid"><label>${tr('syncInviteName')}<input id="sync-invite-name" type="text" maxlength="80" placeholder="${tr('syncInviteNamePlaceholder')}"></label><button id="sync-copy-invite" type="button" class="button secondary">${tr('syncCopyInvite')}</button></div>
     <div id="sync-invite-list" class="settings-list"></div>` : configured ? `<p class="settings-note">${tr('syncMemberHint')}</p>` : '';
-  const actions = configured ? `<div class="settings-actions"><button id="sync-now" type="button" class="button secondary">${tr('syncNow')}</button><button id="sync-disconnect" type="button" class="button danger">${tr('syncDisconnect')}</button></div>` : '';
-  const body = configured ? `<div class="section-title">${tr('syncConnection')}</div><p class="settings-note">${escape(info.username)}@${escape(info.host)}:${escape(info.port)}</p>${status}${team}${actions}${owner ? ownerForm : ''}` : `${joinForm}<div class="section-title">${tr('syncOrCreate')}</div>${ownerForm}${status}`;
+  const actions = configured ? `<div class="settings-actions"><button id="sync-now" type="button" class="button secondary">${tr('syncNow')}</button><button id="sync-disconnect" type="button" class="button danger">${tr(cloud ? 'syncSignOut' : 'syncDisconnect')}</button></div>` : '';
+  const body = cloud ? `<div class="section-title">${tr('syncCloudTitle')}</div><p class="settings-note">${tr('syncCloudConfigured')} ${escape(info.displayName)}</p>${status}${actions}`
+    : configured ? `<div class="section-title">${tr('syncConnection')}</div><p class="settings-note">${escape(info.username)}@${escape(info.host)}:${escape(info.port)}</p>${status}${team}${actions}${owner ? ownerForm : ''}`
+      : `${cloudForm}${joinForm}<div class="section-title">${tr('syncOrCreate')}</div>${ownerForm}${status}`;
   openModal(t('syncTitle'), t('syncSubtitle'), body, '', true);
+
+  if (!configured && info.cloudAvailable) $('#sync-cloud-connect').onclick = () => {
+    const start = async () => {
+      try {
+        const result = await window.lokan.cloudStart();
+        cloudPendingCode = result.code;
+        syncDialog();
+        const poll = async () => {
+          if (!cloudPendingCode) return;
+          try {
+            const result = await window.lokan.cloudPoll();
+            if (!result.pending) {
+              cloudPendingCode = ''; syncInfo = result.status; renderSyncLabel(); closeModal();
+              toast(syncInfo.status === 'connected' ? t('syncConnected') : t('syncError', { error: syncInfo.error })); return;
+            }
+            setTimeout(poll, 2000);
+          } catch (error) { cloudPendingCode = ''; toast(t('syncError', { error: error.message })); }
+        };
+        setTimeout(poll, 2000);
+      } catch (error) { toast(t('syncError', { error: error.message })); }
+    };
+    if (state.boards.length > 1 || state.boards.some(item => item.cards.length))
+      confirmAction(t('syncJoinConfirmTitle'), t('syncCloudConfirmBody'), t('syncCloudConnect'), start);
+    else start();
+  };
 
   if (!configured) $('#sync-join').onclick = async () => {
     const code = $('#sync-invite').value.trim(), name = $('#sync-join-name').value.trim();
@@ -233,7 +265,10 @@ function syncDialog() {
   }
   if (configured) {
     $('#sync-now').onclick = async () => { try { syncInfo = await window.lokan.syncNow(); renderSyncLabel(); toast(t('syncFinished')); } catch (error) { toast(t('syncError', { error: error.message })); } };
-    $('#sync-disconnect').onclick = async () => { syncInfo = await window.lokan.syncDisconnect(); renderSyncLabel(); closeModal(); toast(t('syncDisconnected')); };
+    $('#sync-disconnect').onclick = async () => {
+      try { syncInfo = await window.lokan.syncDisconnect(); renderSyncLabel(); closeModal(); toast(t('syncDisconnected')); }
+      catch (error) { toast(t('syncError', { error: error.message })); }
+    };
   }
   if (owner) {
     const refreshInvites = async () => {
@@ -386,13 +421,13 @@ function settingsDialog() {
   const body = `<div class="section-title">${tr('boardSection')}</div><div class="settings-row"><input type="color" value="${b.color}" id="settings-board-color" title="${tr('boardColor')}"><input id="settings-board-name" type="text" maxlength="80" value="${escape(b.name)}" aria-label="${tr('boardName')}"><button type="button" id="delete-board" class="small-button danger" ${state.boards.length === 1 ? 'disabled' : ''}>${tr('deleteBoard')}</button></div>
     <div class="section-title">${tr('statusesSection')} <span class="field-hint">· ${tr('noLimit')}</span></div><div class="settings-list">${columns}</div><div class="settings-add"><input id="settings-new-column" type="text" maxlength="80" placeholder="${tr('newStatusPlaceholder')}"><button id="settings-add-column" type="button" class="button secondary">${tr('add')}</button></div>
     <div class="section-title">${tr('tags')}</div><div class="settings-list">${tags || `<span class="field-hint">${tr('noTags')}</span>`}</div><div class="settings-add"><input id="settings-new-tag" type="text" maxlength="40" placeholder="${tr('newTag')}"><input id="settings-new-tag-color" type="color" class="color-input" value="${COLORS[1]}" title="${tr('tagColor')}"><button id="settings-add-tag" type="button" class="button secondary">${tr('add')}</button></div>
-    <div class="section-title">${tr('syncTitle')}</div><div class="settings-actions"><button id="settings-sync" class="button secondary" type="button">${tr('syncSettings')}</button></div><p class="settings-note">${tr('syncExplanation')}</p>
-    <div class="section-title">MCP</div><div class="settings-actions"><button id="settings-mcp" class="button secondary" type="button">${tr('mcpSettings')}</button></div><p class="settings-note">${tr('mcpExplanation')}</p>
-    <div class="section-title">${tr('data')}</div><div class="settings-actions"><button id="export-data" class="button secondary" type="button">${tr('exportJson')}</button><button id="import-data" class="button secondary" type="button">${tr('importJson')}</button></div><p class="settings-note">${tr('dataNote')}</p><p id="data-location" class="settings-note"></p>`;
+    <div class="section-title">${tr('syncTitle')}</div><div class="settings-actions"><button id="settings-sync" class="button secondary" type="button">${tr('syncSettings')}</button></div><p class="settings-note">${tr(window.lokan.isWeb ? 'syncCloudConfigured' : 'syncExplanation')}</p>
+    ${window.lokan.isWeb ? '' : `<div class="section-title">MCP</div><div class="settings-actions"><button id="settings-mcp" class="button secondary" type="button">${tr('mcpSettings')}</button></div><p class="settings-note">${tr('mcpExplanation')}</p>`}
+    <div class="section-title">${tr('data')}</div><div class="settings-actions"><button id="export-data" class="button secondary" type="button">${tr('exportJson')}</button><button id="import-data" class="button secondary" type="button">${tr('importJson')}</button></div><p class="settings-note">${tr(window.lokan.isWeb ? 'syncCloudDataNote' : 'dataNote')}</p><p id="data-location" class="settings-note"></p>`;
   openModal(t('settings'), b.name, body, `<div class="right"><button type="button" class="button primary" id="settings-done">${tr('done')}</button></div>`, true);
   $('#settings-done').onclick = closeModal;
   $('#settings-sync').onclick = syncDialog;
-  $('#settings-mcp').onclick = mcpDialog;
+  if (!window.lokan.isWeb) $('#settings-mcp').onclick = mcpDialog;
   $('#settings-board-name').onchange = el => dispatch({ type:'board.update', name:el.target.value });
   $('#settings-board-color').onchange = el => dispatch({ type:'board.update', color:el.target.value });
   $('#delete-board').onclick = () => confirmAction(t('deleteBoardTitle'), t('deleteBoardBody', { name:b.name }), t('deleteBoard'), () => { dispatch({ type:'board.delete' }); settingsDialog(); });

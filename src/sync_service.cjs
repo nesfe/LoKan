@@ -3,12 +3,15 @@ const path = require('node:path');
 const { generateKeyPairSync, randomUUID } = require('node:crypto');
 const { utils: { parseKey } } = require('ssh2');
 const { probe, authenticate, installServer, exchange, manageInvites } = require('./sync_ssh.cjs');
+const { validateCloudUrl, beginDevice, pollDevice, cloudUser, cloudExchange, revokeCloudToken } = require('./sync_cloud.cjs');
+const publicCloudUrl = require('../package.json').cloudUrl;
 
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 class SyncService {
-  constructor({ userData, safeStorage, readLocal, writeLocal, enqueueTask, notify }) {
+  constructor({ userData, safeStorage, readLocal, writeLocal, enqueueTask, notify, cloudUrl = publicCloudUrl }) {
     Object.assign(this, { userData, safeStorage, readLocal, writeLocal, enqueueTask, notify });
+    this.cloudUrl = cloudUrl;
     this.configFile = path.join(userData, 'sync.json');
     this.status = 'local';
     this.error = '';
@@ -20,12 +23,14 @@ class SyncService {
     this.reconfiguring = false;
     this.timer = null;
     this.debounce = null;
+    this.pendingCloud = null;
   }
 
   publicStatus() {
     const { host = '', port = 22, username = '', displayName = '', authMode = 'password', keyPath = '', fingerprint = '' } = this.config || {};
-    return { host, port, username, displayName, authMode, keyPath: authMode === 'invite' ? '' : keyPath, fingerprint,
-      role: authMode === 'invite' ? 'member' : this.config ? 'owner' : '', status: this.status, error: this.error, lastSync: this.lastSync };
+    return { host, port, username, displayName, authMode, keyPath: ['invite', 'cloud'].includes(authMode) ? '' : keyPath, fingerprint,
+      cloudAvailable: Boolean(this.cloudUrl), cloudUrl: this.config?.cloudUrl || '', role: authMode === 'cloud' ? 'cloud' : authMode === 'invite' ? 'member' : this.config ? 'owner' : '',
+      status: this.status, error: this.error, lastSync: this.lastSync };
   }
 
   setStatus(status, error = '') {
@@ -63,12 +68,12 @@ class SyncService {
     try {
       this.config = JSON.parse(await fs.readFile(this.configFile, 'utf8'));
       const secret = this.decrypt(this.config.encryptedSecret);
-      if (this.config.authMode === 'invite') {
+      if (['invite', 'cloud'].includes(this.config.authMode)) {
         let privateKey = secret;
         if (!privateKey && this.config.keyPath) {
           try { privateKey = await fs.readFile(this.config.keyPath, 'utf8'); } catch { /* Key missing: ask to rejoin. */ }
         }
-        this.credentials = privateKey ? { privateKey } : null;
+        this.credentials = privateKey ? (this.config.authMode === 'cloud' ? { token: privateKey } : { privateKey }) : null;
       } else {
         this.credentials = this.config.authMode === 'password' ? (secret ? { password: secret } : null) :
           (this.config.encryptedSecret && !secret ? null : { passphrase: secret });
@@ -125,13 +130,18 @@ class SyncService {
     try {
       if (this.running) await this.running.catch(() => {});
       const previous = this.config;
+      const token = this.credentials?.token;
+      if (previous?.authMode === 'cloud' && token) {
+        try { await revokeCloudToken(previous.cloudUrl, token); }
+        catch (error) { if (error.status !== 401) throw error; }
+      }
       this.config = null;
       this.credentials = null;
       this.client?.end();
       this.client = null;
       clearTimeout(this.debounce);
       try { await fs.unlink(this.configFile); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-      if (previous?.authMode === 'invite' && previous.keyPath?.startsWith(path.join(this.userData, 'invite-'))) {
+      if (['invite', 'cloud'].includes(previous?.authMode) && previous.keyPath?.startsWith(path.join(this.userData, previous.authMode === 'cloud' ? 'cloud-' : 'invite-'))) {
         await fs.unlink(previous.keyPath).catch(() => {});
       }
       this.setStatus('local');
@@ -146,6 +156,7 @@ class SyncService {
   }
 
   async ensureClient() {
+    if (this.config?.authMode === 'cloud') return null;
     if (this.client) return this.client;
     if (!this.credentials) throw new Error('SSH credentials required');
     const client = await authenticate({ ...this.config, ...this.credentials });
@@ -156,15 +167,48 @@ class SyncService {
     return client;
   }
 
+  async beginCloud() {
+    if (this.config) throw new Error('Disconnect from the current server first');
+    if (!this.cloudUrl) throw new Error('Cloud sign-in is not available yet');
+    const base = validateCloudUrl(this.cloudUrl);
+    const result = await beginDevice(base);
+    this.pendingCloud = { base, token: result.deviceToken, expires: Date.now() + 600000 };
+    return { code: result.code, verificationUrl: result.verificationUrl };
+  }
+
+  async pollCloud() {
+    const pending = this.pendingCloud;
+    if (!pending || Date.now() > pending.expires) throw new Error('Cloud sign-in expired');
+    const result = await pollDevice(pending.base, pending.token);
+    if (result.pending) return { pending: true };
+    if (typeof result.token !== 'string' || !/^[A-Za-z0-9_-]{40,100}$/.test(result.token)) throw new Error('Invalid cloud access token');
+    const profile = await cloudUser(pending.base, result.token);
+    const keyPath = this.canEncrypt() ? '' : path.join(this.userData, 'cloud-token.txt');
+    if (keyPath) {
+      await fs.mkdir(this.userData, { recursive: true });
+      await fs.writeFile(keyPath, result.token, { mode: 0o600 });
+      await fs.chmod(keyPath, 0o600);
+    }
+    this.config = { authMode: 'cloud', role: 'cloud', cloudUrl: pending.base, host: new URL(pending.base).hostname,
+      port: Number(new URL(pending.base).port) || (pending.base.startsWith('https:') ? 443 : 80), username: '',
+      fingerprint: 'cloud', displayName: profile.name || '', keyPath, encryptedSecret: this.encrypt(result.token), revision: -1, base: null };
+    this.credentials = { token: result.token };
+    this.pendingCloud = null;
+    await this.saveConfig();
+    this.setStatus('connected');
+    await this.run().catch(() => {});
+    return { pending: false, status: this.publicStatus() };
+  }
+
   async listInvites() {
-    if (!this.config || this.config.authMode === 'invite') throw new Error('Only the server owner can manage invitations');
+    if (!this.config || ['invite', 'cloud'].includes(this.config.authMode)) throw new Error('Only the server owner can manage invitations');
     return manageInvites(await this.ensureClient(), { op: 'list' });
   }
 
   async createInvite(name) {
     const displayName = typeof name === 'string' ? name.trim() : '';
     if (!displayName || displayName.length > 80) throw new Error('Enter a name for this invitation');
-    if (!this.config || this.config.authMode === 'invite') throw new Error('Only the server owner can invite people');
+    if (!this.config || ['invite', 'cloud'].includes(this.config.authMode)) throw new Error('Only the server owner can invite people');
     if (this.config.username === 'root') throw new Error('Invitations require a non-root SSH account');
     const client = await this.ensureClient();
     await installServer(client);
@@ -188,7 +232,7 @@ class SyncService {
   }
 
   async revokeInvite(inviteId) {
-    if (!this.config || this.config.authMode === 'invite') throw new Error('Only the server owner can revoke access');
+    if (!this.config || ['invite', 'cloud'].includes(this.config.authMode)) throw new Error('Only the server owner can revoke access');
     return manageInvites(await this.ensureClient(), { op: 'remove', id: inviteId });
   }
 
@@ -232,7 +276,7 @@ class SyncService {
       } catch (error) {
         this.client?.end();
         this.client = null;
-        this.setStatus('offline', error.message);
+        this.setStatus(error.status === 401 ? 'needsAuth' : 'offline', error.message);
         throw error;
       }
       return this.publicStatus();
@@ -244,10 +288,12 @@ class SyncService {
     const { normalizeState } = await import('./model.mjs');
     const { sharedState, mergeShared, isPristineState } = await import('./sync_merge.mjs');
     const client = await this.ensureClient();
+    const transport = request => this.config.authMode === 'cloud'
+      ? cloudExchange(this.config.cloudUrl, this.credentials.token, request) : exchange(client, request);
     const local = (await this.readLocal()).state;
     const base = this.config.base;
     let revision = this.config.revision ?? -1;
-    let current = await exchange(client, { op: 'get', knownRevision: revision });
+    let current = await transport({ op: 'get', knownRevision: revision });
     for (let attempt = 0; attempt < 6; attempt++) {
       let remote;
       if (Object.hasOwn(current, 'state')) {
@@ -261,9 +307,9 @@ class SyncService {
       const merged = mergeShared(effectiveBase, mine, remote);
       if (!merged.boards.length) throw new Error('No board to synchronize');
       if (!equal(merged, remote)) {
-        const put = await exchange(client, { op: 'put', revision: current.revision, state: merged });
+        const put = await transport({ op: 'put', revision: current.revision, state: merged });
         if (put.conflict) {
-          current = await exchange(client, { op: 'get', knownRevision: -1 });
+          current = await transport({ op: 'get', knownRevision: -1 });
           continue;
         }
         revision = put.revision;

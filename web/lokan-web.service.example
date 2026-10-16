@@ -1,0 +1,25 @@
+[Unit]
+Description=LoKan web and cloud sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lokan
+Group=lokan
+WorkingDirectory=/opt/lokan
+EnvironmentFile=/etc/lokan-web.env
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+Environment=LOKAN_DATA_DIR=/var/lib/lokan-web
+ExecStart=/usr/bin/node web/server.mjs
+Restart=on-failure
+StateDirectory=lokan-web
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/lokan-web
+
+[Install]
+WantedBy=multi-user.target

@@ -3,5 +3,7 @@ dist/
 *.log
 .DS_Store
 coverage/
+.web-data/
+.playwright-cli/
 __pycache__/
 *.pyc
