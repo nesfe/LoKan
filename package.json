@@ -2,6 +2,7 @@
   "name": "lokan",
   "version": "1.4.0",
   "description": "Local kanban board",
+  "cloudUrl": "",
   "desktopName": "LoKan",
   "main": "src/main.cjs",
   "author": "LoKan contributors",

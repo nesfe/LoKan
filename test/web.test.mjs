@@ -96,7 +96,7 @@ test('desktop cloud connection synchronizes with browser storage and revokes dev
     const account = store.account({ provider: 'google', subject: 'cloud-test', name: 'Cloud owner' });
     const makeService = name => {
       let local = createInitialState(), queue = Promise.resolve();
-      const service = new SyncService({ userData: path.join(directory, name), safeStorage: { isEncryptionAvailable: () => false },
+      const service = new SyncService({ userData: path.join(directory, name), cloudUrl: base, safeStorage: { isEncryptionAvailable: () => false },
         readLocal: async () => ({ state: local }), writeLocal: async next => { local = next; },
         enqueueTask: task => { queue = queue.catch(() => {}).then(task); return queue; }, notify: () => {} });
       services.push(service);
@@ -104,7 +104,7 @@ test('desktop cloud connection synchronizes with browser storage and revokes dev
     };
     const first = makeService('first');
     const connect = async service => {
-      const pending = await service.beginCloud(base);
+      const pending = await service.beginCloud();
       assert.match(pending.code, /^[A-Z2-9]{8}$/);
       assert.equal(store.approveDevice(pending.code, account.id), true);
       assert.equal((await service.pollCloud()).pending, false);

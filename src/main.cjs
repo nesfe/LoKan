@@ -131,9 +131,9 @@ app.whenReady().then(() => {
   ipcMain.handle('sync:invite-list', event => { checkSender(event); return sync.listInvites(); });
   ipcMain.handle('sync:revoke', (event, id) => { checkSender(event); return sync.revokeInvite(id); });
   ipcMain.handle('sync:join', (event, code, name) => { checkSender(event); return sync.joinInvite(code, name); });
-  ipcMain.handle('cloud:start', async (event, url) => {
+  ipcMain.handle('cloud:start', async event => {
     checkSender(event);
-    const result = await sync.beginCloud(url);
+    const result = await sync.beginCloud();
     await shell.openExternal(result.verificationUrl);
     return { code: result.code };
   });

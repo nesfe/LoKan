@@ -188,24 +188,22 @@ function syncDialog() {
     <label class="sync-name">${tr('syncInviteCode')}<input id="sync-invite" type="text" autocomplete="off" spellcheck="false" placeholder="LoKanInvite:..."></label>
     <label class="sync-name">${tr('syncDisplayName')}<input id="sync-join-name" type="text" maxlength="80" placeholder="${tr('syncDisplayNamePlaceholder')}"></label>
     <div class="settings-actions"><button type="button" id="sync-join" class="button primary">${tr('syncJoin')}</button></div>`;
-  const cloudForm = `<div class="section-title">${tr('syncCloudTitle')}</div><p class="settings-note">${tr('syncCloudHint')}</p>
-    <label class="sync-name">${tr('syncCloudUrl')}<input id="sync-cloud-url" type="url" autocomplete="url" value="${escape(info.cloudUrl || '')}" placeholder="https://cloud.example.com"></label>
-    <div class="settings-actions"><button type="button" id="sync-cloud-connect" class="button primary" ${cloudPendingCode ? 'disabled' : ''}>${tr('syncCloudConnect')}</button></div>
+  const cloudForm = `<div class="section-title">${tr('syncCloudTitle')}</div><p class="settings-note">${tr(info.cloudAvailable ? 'syncCloudHint' : 'syncCloudUnavailable')}</p>
+    ${info.cloudAvailable ? `<div class="settings-actions"><button type="button" id="sync-cloud-connect" class="button primary" ${cloudPendingCode ? 'disabled' : ''}>${tr('syncCloudConnect')}</button></div>` : ''}
     ${cloudPendingCode ? `<p class="settings-note">${tr('syncCloudCode', { code: cloudPendingCode })}</p>` : ''}`;
   const team = owner ? `<div class="section-title">${tr('syncTeam')}</div><p class="settings-note">${tr('syncTeamHint')}</p>
     <div class="sync-grid"><label>${tr('syncInviteName')}<input id="sync-invite-name" type="text" maxlength="80" placeholder="${tr('syncInviteNamePlaceholder')}"></label><button id="sync-copy-invite" type="button" class="button secondary">${tr('syncCopyInvite')}</button></div>
     <div id="sync-invite-list" class="settings-list"></div>` : configured ? `<p class="settings-note">${tr('syncMemberHint')}</p>` : '';
   const actions = configured ? `<div class="settings-actions"><button id="sync-now" type="button" class="button secondary">${tr('syncNow')}</button><button id="sync-disconnect" type="button" class="button danger">${tr(cloud ? 'syncSignOut' : 'syncDisconnect')}</button></div>` : '';
-  const body = cloud ? `<div class="section-title">${tr('syncCloudTitle')}</div><p class="settings-note">${tr('syncCloudConfigured')} ${escape(info.displayName)} · ${escape(info.cloudUrl)}</p>${status}${actions}`
+  const body = cloud ? `<div class="section-title">${tr('syncCloudTitle')}</div><p class="settings-note">${tr('syncCloudConfigured')} ${escape(info.displayName)}</p>${status}${actions}`
     : configured ? `<div class="section-title">${tr('syncConnection')}</div><p class="settings-note">${escape(info.username)}@${escape(info.host)}:${escape(info.port)}</p>${status}${team}${actions}${owner ? ownerForm : ''}`
       : `${cloudForm}${joinForm}<div class="section-title">${tr('syncOrCreate')}</div>${ownerForm}${status}`;
   openModal(t('syncTitle'), t('syncSubtitle'), body, '', true);
 
-  if (!configured) $('#sync-cloud-connect').onclick = () => {
-    const address = $('#sync-cloud-url').value.trim();
+  if (!configured && info.cloudAvailable) $('#sync-cloud-connect').onclick = () => {
     const start = async () => {
       try {
-        const result = await window.lokan.cloudStart(address);
+        const result = await window.lokan.cloudStart();
         cloudPendingCode = result.code;
         syncDialog();
         const poll = async () => {

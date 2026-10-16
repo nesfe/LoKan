@@ -4,12 +4,14 @@ const { generateKeyPairSync, randomUUID } = require('node:crypto');
 const { utils: { parseKey } } = require('ssh2');
 const { probe, authenticate, installServer, exchange, manageInvites } = require('./sync_ssh.cjs');
 const { validateCloudUrl, beginDevice, pollDevice, cloudUser, cloudExchange, revokeCloudToken } = require('./sync_cloud.cjs');
+const publicCloudUrl = require('../package.json').cloudUrl;
 
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 class SyncService {
-  constructor({ userData, safeStorage, readLocal, writeLocal, enqueueTask, notify }) {
+  constructor({ userData, safeStorage, readLocal, writeLocal, enqueueTask, notify, cloudUrl = publicCloudUrl }) {
     Object.assign(this, { userData, safeStorage, readLocal, writeLocal, enqueueTask, notify });
+    this.cloudUrl = cloudUrl;
     this.configFile = path.join(userData, 'sync.json');
     this.status = 'local';
     this.error = '';
@@ -27,7 +29,7 @@ class SyncService {
   publicStatus() {
     const { host = '', port = 22, username = '', displayName = '', authMode = 'password', keyPath = '', fingerprint = '' } = this.config || {};
     return { host, port, username, displayName, authMode, keyPath: ['invite', 'cloud'].includes(authMode) ? '' : keyPath, fingerprint,
-      cloudUrl: this.config?.cloudUrl || '', role: authMode === 'cloud' ? 'cloud' : authMode === 'invite' ? 'member' : this.config ? 'owner' : '',
+      cloudAvailable: Boolean(this.cloudUrl), cloudUrl: this.config?.cloudUrl || '', role: authMode === 'cloud' ? 'cloud' : authMode === 'invite' ? 'member' : this.config ? 'owner' : '',
       status: this.status, error: this.error, lastSync: this.lastSync };
   }
 
@@ -165,9 +167,10 @@ class SyncService {
     return client;
   }
 
-  async beginCloud(value) {
+  async beginCloud() {
     if (this.config) throw new Error('Disconnect from the current server first');
-    const base = validateCloudUrl(value);
+    if (!this.cloudUrl) throw new Error('Cloud sign-in is not available yet');
+    const base = validateCloudUrl(this.cloudUrl);
     const result = await beginDevice(base);
     this.pendingCloud = { base, token: result.deviceToken, expires: Date.now() + 600000 };
     return { code: result.code, verificationUrl: result.verificationUrl };
