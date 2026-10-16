@@ -1,6 +1,6 @@
 {
   "name": "lokan",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Local kanban board",
   "desktopName": "LoKan",
   "main": "src/main.cjs",
@@ -53,5 +53,8 @@
         "dmg"
       ]
     }
+  },
+  "dependencies": {
+    "ssh2": "^1.17.0"
   }
 }

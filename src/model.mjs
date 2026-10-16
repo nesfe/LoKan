@@ -20,16 +20,16 @@ export function normalizeLink(value) {
   } catch { return ''; }
 }
 
-export function createBoard(name, language = 'ru') {
+export function createBoard(name, language = 'ru', ids = {}) {
   const defaults = DEFAULT_NAMES[language] || DEFAULT_NAMES.ru;
   return {
-    id: makeId(), name: typeof name === 'string' && name.trim() ? name.trim() : defaults.board, color: COLORS[0], nextNumber: 1,
+    id: ids.boardId || makeId(), name: typeof name === 'string' && name.trim() ? name.trim() : defaults.board, color: COLORS[0], nextNumber: 1,
     columns: [
-      { id: makeId(), name: defaults.columns[0], color: '#8d98a8', limit: null },
-      { id: makeId(), name: defaults.columns[1], color: '#6877f4', limit: null },
-      { id: makeId(), name: defaults.columns[2], color: '#f0ab62', limit: 5 },
-      { id: makeId(), name: defaults.columns[3], color: '#a989e8', limit: null },
-      { id: makeId(), name: defaults.columns[4], color: '#55b7a0', limit: null }
+      { id: ids.columnIds?.[0] || makeId(), name: defaults.columns[0], color: '#8d98a8', limit: null },
+      { id: ids.columnIds?.[1] || makeId(), name: defaults.columns[1], color: '#6877f4', limit: null },
+      { id: ids.columnIds?.[2] || makeId(), name: defaults.columns[2], color: '#f0ab62', limit: 5 },
+      { id: ids.columnIds?.[3] || makeId(), name: defaults.columns[3], color: '#a989e8', limit: null },
+      { id: ids.columnIds?.[4] || makeId(), name: defaults.columns[4], color: '#55b7a0', limit: null }
     ],
     tags: [], cards: []
   };
@@ -58,7 +58,7 @@ export function normalizeState(raw) {
     }));
     const cards = (Array.isArray(source.cards) ? source.cards : []).slice(0, 50000).map(item => ({
       id: id(item.id), number: Number.isInteger(item.number) && item.number > 0 ? item.number : 1,
-      title: str(item.title, 200) || (language === 'en' ? 'Untitled' : 'Без названия'), description: str(item.description, 20000), link: normalizeLink(item.link),
+      title: str(item.title, 200) || (language === 'en' ? 'Untitled' : 'Без названия'), description: str(item.description, 20000), link: normalizeLink(item.link), assignee: str(item.assignee, 80), updatedBy: str(item.updatedBy, 80),
       columnId: columns.some(c => c.id === item.columnId) ? item.columnId : columns[0].id,
       priority: PRIORITIES.includes(item.priority) ? item.priority : 'none',
       color: /^#[0-9a-fA-F]{6}$/.test(item.color) ? item.color : '',
@@ -93,7 +93,7 @@ export function updateState(state, action) {
   const card = () => board.cards.find(c => c.id === action.id);
   switch (action.type) {
     case 'board.add': {
-      const added = createBoard(action.name, next.language);
+      const added = createBoard(action.name, next.language, action);
       next.boards.push(added); next.activeBoardId = added.id; break;
     }
     case 'board.select':
@@ -107,7 +107,7 @@ export function updateState(state, action) {
       if (next.boards.length > 1) { next.boards = next.boards.filter(b => b.id !== board.id); next.activeBoardId = next.boards[0].id; }
       break;
     case 'column.add':
-      board.columns.push({ id: makeId(), name: str(action.name, 80).trim() || (next.language === 'en' ? 'New column' : 'Новая колонка'), color: color(action.color || COLORS[0]), limit: null });
+      board.columns.push({ id: action.newId || makeId(), name: str(action.name, 80).trim() || (next.language === 'en' ? 'New column' : 'Новая колонка'), color: color(action.color || COLORS[0]), limit: null });
       break;
     case 'column.update': {
       const column = board.columns.find(c => c.id === action.id);
@@ -133,7 +133,7 @@ export function updateState(state, action) {
       break;
     }
     case 'tag.add':
-      if (str(action.name, 40).trim()) board.tags.push({ id: makeId(), name: str(action.name, 40).trim(), color: color(action.color || COLORS[0]) });
+      if (str(action.name, 40).trim()) board.tags.push({ id: action.newId || makeId(), name: str(action.name, 40).trim(), color: color(action.color || COLORS[0]) });
       break;
     case 'tag.update': {
       const tag = board.tags.find(t => t.id === action.id);
@@ -147,9 +147,9 @@ export function updateState(state, action) {
     case 'card.add': {
       const columnId = board.columns.some(c => c.id === action.columnId) ? action.columnId : board.columns[0].id;
       const order = Math.max(-1, ...board.cards.filter(c => c.columnId === columnId && !c.archived).map(c => c.order)) + 1;
-      const created = now();
-      board.cards.push({ id: makeId(), number: board.nextNumber++, title: str(action.title, 200).trim() || (next.language === 'en' ? 'New task' : 'Новая задача'),
-        description: '', link: '', columnId, priority: 'none', color: '', dueDate: '', tagIds: [], checklist: [],
+      const created = action.createdAt || now();
+      board.cards.push({ id: action.newId || makeId(), number: board.nextNumber++, title: str(action.title, 200).trim() || (next.language === 'en' ? 'New task' : 'Новая задача'),
+        description: '', link: '', assignee: '', updatedBy: str(action.actor, 80), columnId, priority: 'none', color: '', dueDate: '', tagIds: [], checklist: [],
         createdAt: created, updatedAt: created, archived: false, order });
       break;
     }
@@ -157,11 +157,13 @@ export function updateState(state, action) {
       const item = card(); if (!item) break;
       if (action.title !== undefined) item.title = str(action.title, 200).trim() || item.title;
       if (action.description !== undefined) item.description = str(action.description, 20000);
+      if (action.assignee !== undefined) item.assignee = str(action.assignee, 80).trim();
       if (action.link !== undefined) item.link = normalizeLink(action.link);
       if (action.priority !== undefined && PRIORITIES.includes(action.priority)) item.priority = action.priority;
       if (action.color !== undefined) item.color = /^#[0-9a-fA-F]{6}$/.test(action.color) ? action.color : '';
       if (action.dueDate !== undefined) item.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(action.dueDate) ? action.dueDate : '';
       if (action.tagIds !== undefined) item.tagIds = action.tagIds.filter(t => board.tags.some(tag => tag.id === t));
+      if (action.actor) item.updatedBy = str(action.actor, 80);
       item.updatedAt = now(); break;
     }
     case 'card.move': {
@@ -171,23 +173,23 @@ export function updateState(state, action) {
       const index = Math.max(0, Math.min(Number.isInteger(action.index) ? action.index : siblings.length, siblings.length));
       siblings.splice(index, 0, item);
       siblings.forEach((c, i) => { c.order = i; });
-      item.columnId = action.columnId; item.updatedAt = now(); break;
+      item.columnId = action.columnId; if (action.actor) item.updatedBy = str(action.actor, 80); item.updatedAt = now(); break;
     }
     case 'card.archive': {
-      const item = card(); if (item) { item.archived = Boolean(action.archived); item.updatedAt = now(); } break;
+      const item = card(); if (item) { item.archived = Boolean(action.archived); if (action.actor) item.updatedBy = str(action.actor, 80); item.updatedAt = now(); } break;
     }
     case 'card.delete':
       board.cards = board.cards.filter(c => c.id !== action.id); break;
     case 'check.add': {
       const item = card(); const value = str(action.text, 300).trim();
-      if (item && value) { item.checklist.push({ id: makeId(), text: value, done: false }); item.updatedAt = now(); } break;
+      if (item && value) { item.checklist.push({ id: action.newId || makeId(), text: value, done: false }); if (action.actor) item.updatedBy = str(action.actor, 80); item.updatedAt = now(); } break;
     }
     case 'check.toggle': {
       const item = card(); const check = item?.checklist.find(c => c.id === action.checkId);
-      if (check) { check.done = !check.done; item.updatedAt = now(); } break;
+      if (check) { check.done = !check.done; if (action.actor) item.updatedBy = str(action.actor, 80); item.updatedAt = now(); } break;
     }
     case 'check.delete': {
-      const item = card(); if (item) { item.checklist = item.checklist.filter(c => c.id !== action.checkId); item.updatedAt = now(); } break;
+      const item = card(); if (item) { item.checklist = item.checklist.filter(c => c.id !== action.checkId); if (action.actor) item.updatedBy = str(action.actor, 80); item.updatedAt = now(); } break;
     }
     case 'theme.set': next.theme = action.theme === 'light' ? 'light' : 'dark'; break;
     case 'language.set': {

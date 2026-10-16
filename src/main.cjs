@@ -1,12 +1,15 @@
-const { app, BrowserWindow, ipcMain, dialog, session, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, Menu, shell, safeStorage, clipboard } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { SyncService } = require('./sync_service.cjs');
 
 app.setName('LoKan');
 app.setAppUserModelId('app.lokan.desktop');
 app.disableHardwareAcceleration();
 let window;
 let saveQueue = Promise.resolve();
+let sync;
+let stateSequence = 0;
 const dataFile = () => path.join(app.getPath('userData'), 'lokan.json');
 const backupFile = () => path.join(app.getPath('userData'), 'lokan.backup.json');
 const model = () => import('./model.mjs');
@@ -41,14 +44,17 @@ async function writeState(raw) {
   try { await fs.copyFile(file, backupFile()); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   await fs.writeFile(temp, JSON.stringify(state, null, 2), { encoding: 'utf8', mode: 0o600 });
   await fs.rename(temp, file);
+  stateSequence++;
   return state;
 }
 
-function enqueueSave(state) {
-  const task = saveQueue.catch(() => {}).then(() => writeState(state));
+function enqueueTask(action) {
+  const task = saveQueue.catch(() => {}).then(action);
   saveQueue = task;
   return task;
 }
+
+function enqueueSave(state) { return enqueueTask(() => writeState(state)); }
 
 function createWindow() {
   window = new BrowserWindow({
@@ -68,8 +74,18 @@ function createWindow() {
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   Menu.setApplicationMenu(null);
-  ipcMain.handle('data:load', async event => { checkSender(event); await saveQueue.catch(() => {}); return readState(); });
-  ipcMain.handle('data:save', (event, state) => { checkSender(event); return enqueueSave(state); });
+  ipcMain.handle('data:load', async event => { checkSender(event); await saveQueue.catch(() => {}); return { ...await readState(), sequence: stateSequence }; });
+  ipcMain.handle('data:apply', (event, action) => {
+    checkSender(event);
+    if (!action || typeof action !== 'object' || JSON.stringify(action).length > 50000) throw new Error('Invalid action');
+    return enqueueTask(async () => {
+      const { updateState } = await model();
+      const { state } = await readState();
+      const next = updateState(state, { ...action, actor: sync.config?.displayName || '' });
+      if (next !== state) { await writeState(next); sync.changed(); }
+      return { state: next, sequence: stateSequence };
+    });
+  });
   ipcMain.handle('data:export', async event => {
     checkSender(event);
     await saveQueue;
@@ -94,9 +110,24 @@ app.whenReady().then(() => {
     const data = await fs.readFile(result.filePaths[0], 'utf8');
     const state = normalizeState(JSON.parse(data));
     await enqueueSave(state);
+    sync.changed();
     return state;
   });
   ipcMain.handle('data:path', event => { checkSender(event); return dataFile(); });
+  ipcMain.handle('sync:status', event => { checkSender(event); return sync.publicStatus(); });
+  ipcMain.handle('sync:probe', (event, options) => { checkSender(event); return sync.probe(options); });
+  ipcMain.handle('sync:connect', (event, options) => { checkSender(event); return sync.configure(options); });
+  ipcMain.handle('sync:disconnect', event => { checkSender(event); return sync.disconnect(); });
+  ipcMain.handle('sync:now', event => { checkSender(event); return sync.run(); });
+  ipcMain.handle('sync:key-file', event => { checkSender(event); return sync.chooseKey(window, dialog); });
+  ipcMain.handle('sync:invite', event => {
+    checkSender(event);
+    const { host, port, username, fingerprint } = sync.publicStatus();
+    if (!fingerprint) throw new Error('Connect to a server first');
+    const code = `LoKan:${Buffer.from(JSON.stringify({ host, port, username, fingerprint })).toString('base64url')}`;
+    clipboard.writeText(code);
+    return code;
+  });
   ipcMain.handle('link:open', async (event, value) => {
     checkSender(event);
     await saveQueue.catch(() => {});
@@ -108,6 +139,14 @@ app.whenReady().then(() => {
     return true;
   });
   createWindow();
+  sync = new SyncService({
+    userData: app.getPath('userData'), safeStorage,
+    readLocal: readState, writeLocal: writeState, enqueueTask,
+    notify: (channel, payload) => {
+      if (window && !window.isDestroyed()) window.webContents.send(channel, channel === 'sync:state' ? { state: payload, sequence: stateSequence } : payload);
+    }
+  });
+  sync.start().catch(() => {});
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 

@@ -2,14 +2,17 @@ import { createInitialState, getBoard, normalizeState, normalizeLink, updateStat
 import { translate } from './i18n.mjs';
 
 let state = createInitialState();
+let authoritativeState = state;
+let stateSequence = -1;
+const pendingActions = [];
 let search = '';
 let priorityFilter = '';
 let tagFilter = '';
 let dueFilter = '';
-let pendingSaves = 0;
 let toastTimer;
 let draggingId = null;
 let saveFailed = false;
+let syncInfo = { status: 'local', host: '', port: 22, username: '', displayName: '', authMode: 'password', keyPath: '', fingerprint: '', error: '', lastSync: '' };
 
 const $ = selector => document.querySelector(selector);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -38,24 +41,48 @@ function toast(message) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('visible'), 3200);
 }
 
-function persist() {
-  pendingSaves++;
+function refreshPendingState() {
+  state = pendingActions.reduce((current, action) => updateState(current, action), authoritativeState);
+  render();
+}
+
+function acceptState(result) {
+  if (result.sequence >= stateSequence) {
+    stateSequence = result.sequence;
+    authoritativeState = normalizeState(result.state);
+  }
+  refreshPendingState();
+}
+
+function markSaving() {
   saveFailed = false;
   $('#save-state').textContent = t('saving');
   $('#save-state').classList.remove('error');
-  window.lokan.save(state).then(() => {
-    pendingSaves--; if (!pendingSaves && !saveFailed) $('#save-state').textContent = t('saved');
-  }).catch(error => {
-    pendingSaves--; saveFailed = true; $('#save-state').textContent = t('saveError');
-    $('#save-state').classList.add('error'); toast(t('saveErrorToast', { error:error.message }));
-  });
 }
 
 function dispatch(action) {
+  if (action.type === 'board.add') { action.boardId = crypto.randomUUID(); action.columnIds = Array.from({ length: 5 }, () => crypto.randomUUID()); }
+  else if (['column.add', 'tag.add', 'card.add', 'check.add'].includes(action.type)) action.newId = crypto.randomUUID();
+  if (action.type === 'card.add') action.createdAt = new Date().toISOString();
+  if (syncInfo.displayName) action.actor = syncInfo.displayName;
+  action.requestId = crypto.randomUUID();
   const previous = state;
   state = updateState(state, action);
   if (state === previous) return;
-  render(); persist();
+  pendingActions.push(action);
+  render(); markSaving();
+  window.lokan.apply(action).then(result => {
+    const index = pendingActions.findIndex(item => item.requestId === action.requestId);
+    if (index >= 0) pendingActions.splice(index, 1);
+    acceptState(result);
+  }).catch(error => {
+    const index = pendingActions.findIndex(item => item.requestId === action.requestId);
+    if (index >= 0) pendingActions.splice(index, 1);
+    saveFailed = true;
+    refreshPendingState();
+    $('#save-state').classList.add('error');
+    toast(t('saveErrorToast', { error: error.message }));
+  });
 }
 
 function matches(card) {
@@ -85,7 +112,7 @@ function cardHtml(card) {
     <div class="task-meta"><span class="task-number">${escape(cardRef(card))}</span>${card.priority !== 'none' ? `<span class="priority ${card.priority}">${escape(priorityName(card.priority))}</span>` : ''}${card.link ? `<button type="button" class="task-link-icon" data-card-link="${escape(card.id)}" title="${escape(t('openLink'))}" aria-label="${escape(t('openLink'))}">↗</button>` : ''}</div>
     <div class="task-title">${card.link ? `<button type="button" class="task-title-link" data-card-link="${escape(card.id)}" title="${escape(t('openLink'))}">${escape(card.title)}</button>` : escape(card.title)}</div>${card.description ? `<div class="task-description">${escape(card.description)}</div>` : ''}
     ${tags.length ? `<div class="task-tags">${tags.map(t => `<span class="tag" style="color:${t.color};background:${t.color}22">${escape(t.name)}</span>`).join('')}</div>` : ''}
-    ${card.dueDate || card.checklist.length ? `<div class="task-footer">${card.dueDate ? `<span class="due ${dateState}">◷ ${escape(dateLabel(card.dueDate))}</span>` : ''}${card.checklist.length ? `<span>☑ ${complete}/${card.checklist.length}</span>` : ''}</div>` : ''}
+    ${card.dueDate || card.checklist.length || card.assignee ? `<div class="task-footer">${card.dueDate ? `<span class="due ${dateState}">◷ ${escape(dateLabel(card.dueDate))}</span>` : ''}${card.checklist.length ? `<span>☑ ${complete}/${card.checklist.length}</span>` : ''}${card.assignee ? `<span>＠${escape(card.assignee)}</span>` : ''}</div>` : ''}
   </article>`;
 }
 
@@ -94,7 +121,8 @@ function render() {
   applyStaticTranslations();
   document.documentElement.dataset.theme = state.theme;
   $('#theme-toggle').textContent = state.theme === 'dark' ? '☀' : '☾';
-  $('#save-state').textContent = t(saveFailed ? 'saveError' : pendingSaves ? 'saving' : 'saved');
+  $('#save-state').textContent = t(saveFailed ? 'saveError' : pendingActions.length ? 'saving' : 'saved');
+  renderSyncLabel();
   $('#board-list').innerHTML = state.boards.map(item => {
     const count = item.cards.filter(c => !c.archived).length;
     return `<button type="button" class="board-nav ${item.id === b.id ? 'active' : ''}" data-board="${escape(item.id)}"><span class="board-dot" style="background:${item.color}"></span><span class="nav-name">${escape(item.name)}</span><span class="nav-count">${count}</span></button>`;
@@ -122,6 +150,90 @@ function render() {
       <button type="button" class="card-add" data-add-column="${escape(column.id)}"><span>＋</span> ${escape(t('addTask'))}</button>
     </section>`;
   }).join('') + `<button type="button" id="add-column" class="add-column">＋ ${escape(t('addStatus'))}</button>`;
+}
+
+function renderSyncLabel() {
+  const label = $('#sync-label');
+  if (!label) return;
+  label.textContent = t({ local: 'syncTitle', connected: 'syncConnected', syncing: 'syncInProgress', offline: 'syncOffline', needsAuth: 'syncNeedsAuth', error: 'syncOffline' }[syncInfo.status] || 'syncTitle');
+  $('#open-sync').classList.toggle('sync-error', ['offline', 'error', 'needsAuth'].includes(syncInfo.status));
+  if (syncInfo.fingerprint) {
+    $('.local-pill strong').textContent = t('syncStorageTitle');
+    $('.local-pill small').textContent = t('syncStorageDetails');
+  } else {
+    $('.local-pill strong').textContent = t('localPrivate');
+    $('.local-pill small').textContent = t('localDetails');
+  }
+}
+
+function syncDialog() {
+  const info = syncInfo;
+  const connected = Boolean(info.fingerprint);
+  const body = `<div class="section-title">${tr('syncConnection')}</div>
+    <p class="settings-note">${tr('syncExplanation')}</p>
+    <div class="sync-grid"><label>${tr('syncInviteCode')}<input id="sync-invite" type="text" autocomplete="off" placeholder="LoKan:..."></label><button type="button" id="sync-use-invite" class="button secondary">${tr('syncUseInvite')}</button></div>
+    <div class="sync-grid"><label>${tr('syncHost')}<input id="sync-host" type="text" autocomplete="off" value="${escape(info.host)}" placeholder="192.0.2.10"></label><label>${tr('syncPort')}<input id="sync-port" type="number" min="1" max="65535" value="${escape(info.port)}"></label></div>
+    <div class="sync-grid"><label>${tr('syncUser')}<input id="sync-user" type="text" autocomplete="username" value="${escape(info.username)}" placeholder="lokan"></label><label>${tr('syncAuth')}<select id="sync-auth"><option value="password">${tr('syncPassword')}</option><option value="key">${tr('syncKey')}</option></select></label></div>
+    <label class="sync-name">${tr('syncDisplayName')}<input id="sync-display-name" type="text" maxlength="80" value="${escape(info.displayName)}" placeholder="${tr('syncDisplayNamePlaceholder')}"></label>
+    <div id="sync-password-fields"><label>${tr('syncPassword')}<input id="sync-password" type="password" autocomplete="new-password"></label></div>
+    <div id="sync-key-fields" hidden><div class="sync-grid"><label>${tr('syncKeyFile')}<input id="sync-key-path" type="text" readonly value="${escape(info.keyPath)}"></label><button type="button" id="sync-pick-key" class="button secondary">${tr('syncChooseKey')}</button></div><label>${tr('syncPassphrase')}<input id="sync-passphrase" type="password" autocomplete="off"></label></div>
+    <div class="section-title">${tr('syncVerify')}</div><p class="settings-note">${tr('syncVerifyHint')}</p>
+    <div class="settings-actions"><button id="sync-probe" type="button" class="button secondary">${tr('syncCheckHost')}</button><code id="sync-fingerprint" class="sync-fingerprint">${escape(info.fingerprint || '—')}</code></div>
+    <label class="sync-confirm"><input id="sync-trust" type="checkbox"> ${tr('syncTrust')}</label>
+    <p id="sync-status-text" class="settings-note">${escape(t({ local:'syncLocal', connected:'syncConnected', syncing:'syncInProgress', offline:'syncOffline', needsAuth:'syncNeedsAuth', error:'syncOffline' }[info.status] || 'syncLocal'))}${info.error ? ` · ${escape(info.error)}` : ''}</p>
+    ${connected ? `<div class="section-title">${tr('syncTeam')}</div><p class="settings-note">${tr('syncTeamHint')}</p><div class="settings-actions"><button id="sync-copy-invite" type="button" class="button secondary">${tr('syncCopyInvite')}</button><button id="sync-now" type="button" class="button secondary">${tr('syncNow')}</button><button id="sync-disconnect" type="button" class="button secondary">${tr('syncDisconnect')}</button></div>` : ''}`;
+  openModal(t('syncTitle'), t('syncSubtitle'), body, `<div class="right"><button type="button" class="button primary" id="sync-connect">${tr('syncConnect')}</button></div>`, true);
+  $('#sync-auth').value = info.authMode;
+  const authChanged = () => {
+    const key = $('#sync-auth').value === 'key';
+    $('#sync-password-fields').hidden = key;
+    $('#sync-key-fields').hidden = !key;
+  };
+  $('#sync-auth').onchange = authChanged; authChanged();
+  let verified = info.fingerprint;
+  const setFingerprint = value => { verified = value; $('#sync-fingerprint').textContent = value || '—'; $('#sync-trust').checked = false; };
+  $('#sync-host').oninput = () => setFingerprint('');
+  $('#sync-port').oninput = () => setFingerprint('');
+  $('#sync-user').oninput = () => setFingerprint('');
+  $('#sync-pick-key').onclick = async () => { const file = await window.lokan.syncKeyFile(); if (file) $('#sync-key-path').value = file; };
+  $('#sync-use-invite').onclick = () => {
+    try {
+      const code = $('#sync-invite').value.trim();
+      if (!code.startsWith('LoKan:') || code.length > 2000) throw new Error();
+      const raw = code.slice(6).replace(/-/g, '+').replace(/_/g, '/');
+      const invite = JSON.parse(atob(raw));
+      if (typeof invite.host !== 'string' || !Number.isInteger(invite.port) || typeof invite.username !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/.test(invite.fingerprint)) throw new Error();
+      $('#sync-host').value = invite.host; $('#sync-port').value = invite.port; $('#sync-user').value = invite.username;
+      setFingerprint(invite.fingerprint);
+      toast(t('syncInviteApplied'));
+    } catch { toast(t('syncInvalidInvite')); }
+  };
+  $('#sync-probe').onclick = async () => {
+    const button = $('#sync-probe'); button.disabled = true;
+    try {
+      const found = await window.lokan.syncProbe({ host: $('#sync-host').value.trim(), port: Number($('#sync-port').value), username: $('#sync-user').value.trim() });
+      setFingerprint(found);
+      toast(t('syncHostChecked'));
+    } catch (error) { toast(t('syncError', { error: error.message })); }
+    finally { button.disabled = false; }
+  };
+  $('#sync-connect').onclick = async () => {
+    if (!verified || !$('#sync-trust').checked) { toast(t('syncTrustRequired')); return; }
+    const button = $('#sync-connect'); button.disabled = true;
+    try {
+      syncInfo = await window.lokan.syncConnect({
+        host: $('#sync-host').value.trim(), port: Number($('#sync-port').value), username: $('#sync-user').value.trim(), displayName: $('#sync-display-name').value.trim(),
+        authMode: $('#sync-auth').value, password: $('#sync-password').value, keyPath: $('#sync-key-path').value,
+        passphrase: $('#sync-passphrase').value, fingerprint: verified
+      });
+      renderSyncLabel(); closeModal(); toast(t('syncConnected'));
+    } catch (error) { toast(t('syncError', { error: error.message })); button.disabled = false; }
+  };
+  if (connected) {
+    $('#sync-copy-invite').onclick = async () => { try { await window.lokan.syncInvite(); toast(t('syncInviteCopied')); } catch (error) { toast(t('syncError', { error: error.message })); } };
+    $('#sync-now').onclick = async () => { try { syncInfo = await window.lokan.syncNow(); renderSyncLabel(); toast(t('syncFinished')); } catch (error) { toast(t('syncError', { error: error.message })); } };
+    $('#sync-disconnect').onclick = async () => { syncInfo = await window.lokan.syncDisconnect(); renderSyncLabel(); closeModal(); toast(t('syncDisconnected')); };
+  }
 }
 
 function closeModal() { $('#modal-root').innerHTML = ''; }
@@ -161,13 +273,14 @@ function editCard(id) {
     <div class="field"><label for="edit-link">${escape(t('link'))}</label><input id="edit-link" type="text" inputmode="url" maxlength="2048" value="${escape(card.link)}" placeholder="${escape(t('linkPlaceholder'))}"><span class="field-hint">${escape(t('linkHint'))}</span></div>
     <div class="field-row"><div class="field"><label for="edit-column">${escape(t('status'))}</label><select id="edit-column">${b.columns.map(c => `<option value="${escape(c.id)}" ${c.id === card.columnId ? 'selected' : ''}>${escape(c.name)}</option>`).join('')}</select></div><div class="field"><label for="edit-priority">${escape(t('priority'))}</label><select id="edit-priority">${PRIORITIES.map(p => `<option value="${p}" ${p === card.priority ? 'selected' : ''}>${escape(priorityName(p))}</option>`).join('')}</select></div></div>
     <div class="field-row"><div class="field"><label for="edit-due">${escape(t('due'))}</label><input id="edit-due" type="date" value="${escape(card.dueDate)}"></div><div class="field"><label for="edit-color">${escape(t('cardColor'))}</label><select id="edit-color"><option value="">${escape(t('noColor'))}</option>${COLORS.map((c,i) => `<option value="${c}" ${c === card.color ? 'selected' : ''}>${escape(t(['indigo','mint','amber','rose','lilac','blue'][i]))}</option>`).join('')}</select></div></div>
+    <div class="field"><label for="edit-assignee">${escape(t('assignee'))}</label><input id="edit-assignee" maxlength="80" value="${escape(card.assignee || '')}" placeholder="${escape(t('assigneePlaceholder'))}"></div>
     <span class="field-hint">${escape(t('numberHint', { number:cardRef(card) }))}</span></form>
     <div class="section-title">${escape(t('tags'))}</div><div class="tag-picker">${tags || `<span class="field-hint">${escape(t('tagsHint'))}</span>`}</div>
     <div class="section-title">${escape(t('checklist'))} ${card.checklist.length ? `(${card.checklist.filter(c => c.done).length}/${card.checklist.length})` : ''}</div><div class="check-list">${checks || `<span class="field-hint">${escape(t('firstCheck'))}</span>`}</div>
     <form id="check-form" class="check-add"><input id="check-text" maxlength="300" placeholder="${escape(t('newCheck'))}"><button type="submit" class="button secondary">${escape(t('add'))}</button></form>`;
   const footer = `<button id="delete-card" type="button" class="text-button">${escape(t('delete'))}</button><div class="right"><button id="archive-card" type="button" class="button secondary">${escape(t(card.archived ? 'restore' : 'toArchive'))}</button><button id="save-card" type="submit" form="card-form" class="button primary">${escape(t('save'))}</button></div>`;
   const createdDate = new Intl.DateTimeFormat(state.language === 'en' ? 'en-US' : 'ru-RU', { dateStyle:'medium' }).format(new Date(card.createdAt));
-  openModal(`${cardRef(card)} · ${t('task')}`, t('createdOn', { date:createdDate }), body, footer, true);
+  openModal(`${cardRef(card)} · ${t('task')}`, `${t('createdOn', { date:createdDate })}${card.updatedBy ? ` · ${t('updatedBy', { name: card.updatedBy })}` : ''}`, body, footer, true);
   const saveDraft = () => {
     const current = board().cards.find(c => c.id === id); if (!current) return;
     const title = $('#edit-title').value.trim(); if (!title) { $('#edit-title').focus(); return false; }
@@ -176,7 +289,7 @@ function editCard(id) {
     if (rawLink && !link) { $('#edit-link').setCustomValidity(t('invalidLink')); $('#edit-link').reportValidity(); $('#edit-link').focus(); return false; }
     const columnId = $('#edit-column').value;
     const selectedTags = [...document.querySelectorAll('.tag-option.selected')].map(el => el.dataset.tagPick);
-    dispatch({ type:'card.update', id, title, description:$('#edit-description').value, link, priority:$('#edit-priority').value, color:$('#edit-color').value, dueDate:$('#edit-due').value, tagIds:selectedTags });
+    dispatch({ type:'card.update', id, title, description:$('#edit-description').value, link, assignee:$('#edit-assignee').value, priority:$('#edit-priority').value, color:$('#edit-color').value, dueDate:$('#edit-due').value, tagIds:selectedTags });
     if (columnId !== current.columnId) dispatch({ type:'card.move', id, columnId });
     return true;
   };
@@ -223,9 +336,11 @@ function settingsDialog() {
   const body = `<div class="section-title">${tr('boardSection')}</div><div class="settings-row"><input type="color" value="${b.color}" id="settings-board-color" title="${tr('boardColor')}"><input id="settings-board-name" type="text" maxlength="80" value="${escape(b.name)}" aria-label="${tr('boardName')}"><button type="button" id="delete-board" class="small-button danger" ${state.boards.length === 1 ? 'disabled' : ''}>${tr('deleteBoard')}</button></div>
     <div class="section-title">${tr('statusesSection')} <span class="field-hint">· ${tr('noLimit')}</span></div><div class="settings-list">${columns}</div><div class="settings-add"><input id="settings-new-column" type="text" maxlength="80" placeholder="${tr('newStatusPlaceholder')}"><button id="settings-add-column" type="button" class="button secondary">${tr('add')}</button></div>
     <div class="section-title">${tr('tags')}</div><div class="settings-list">${tags || `<span class="field-hint">${tr('noTags')}</span>`}</div><div class="settings-add"><input id="settings-new-tag" type="text" maxlength="40" placeholder="${tr('newTag')}"><input id="settings-new-tag-color" type="color" class="color-input" value="${COLORS[1]}" title="${tr('tagColor')}"><button id="settings-add-tag" type="button" class="button secondary">${tr('add')}</button></div>
+    <div class="section-title">${tr('syncTitle')}</div><div class="settings-actions"><button id="settings-sync" class="button secondary" type="button">${tr('syncSettings')}</button></div><p class="settings-note">${tr('syncExplanation')}</p>
     <div class="section-title">${tr('data')}</div><div class="settings-actions"><button id="export-data" class="button secondary" type="button">${tr('exportJson')}</button><button id="import-data" class="button secondary" type="button">${tr('importJson')}</button></div><p class="settings-note">${tr('dataNote')}</p><p id="data-location" class="settings-note"></p>`;
   openModal(t('settings'), b.name, body, `<div class="right"><button type="button" class="button primary" id="settings-done">${tr('done')}</button></div>`, true);
   $('#settings-done').onclick = closeModal;
+  $('#settings-sync').onclick = syncDialog;
   $('#settings-board-name').onchange = el => dispatch({ type:'board.update', name:el.target.value });
   $('#settings-board-color').onchange = el => dispatch({ type:'board.update', color:el.target.value });
   $('#delete-board').onclick = () => confirmAction(t('deleteBoardTitle'), t('deleteBoardBody', { name:b.name }), t('deleteBoard'), () => { dispatch({ type:'board.delete' }); settingsDialog(); });
@@ -251,7 +366,7 @@ function settingsDialog() {
   $('#settings-new-tag').onkeydown = e => { if (e.key === 'Enter') $('#settings-add-tag').click(); };
   $('#export-data').onclick = async () => { try { if (await window.lokan.export()) toast(t('backupSaved')); } catch(error) { toast(t('exportError', { error:error.message })); } };
   $('#import-data').onclick = () => confirmAction(t('importTitle'), t('importBody'), t('chooseFile'), async () => {
-    try { const imported = await window.lokan.import(); if (imported) { state = normalizeState(imported); search = priorityFilter = tagFilter = dueFilter = ''; $('#search').value = ''; $('#filter-priority').value = ''; $('#filter-due').value = ''; render(); settingsDialog(); toast(t('imported')); } else settingsDialog(); }
+    try { const imported = await window.lokan.import(); if (imported) { acceptState(await window.lokan.load()); search = priorityFilter = tagFilter = dueFilter = ''; $('#search').value = ''; $('#filter-priority').value = ''; $('#filter-due').value = ''; render(); settingsDialog(); toast(t('imported')); } else settingsDialog(); }
     catch(error) { settingsDialog(); toast(t('importError', { error:error.message })); }
   });
   window.lokan.dataPath().then(path => { const target = $('#data-location'); if (target) target.textContent = t('dataPath', { path }); });
@@ -301,6 +416,7 @@ $('#board').addEventListener('drop', event => {
 
 $('#add-board').onclick = createBoardDialog;
 $('#open-settings').onclick = settingsDialog;
+$('#open-sync').onclick = syncDialog;
 $('#new-card').onclick = () => newCard();
 $('#show-archive').onclick = archiveDialog;
 $('#theme-toggle').onclick = () => dispatch({ type:'theme.set', theme:state.theme === 'dark' ? 'light' : 'dark' });
@@ -317,9 +433,15 @@ document.addEventListener('keydown', event => {
   if (!writing && event.key.toLowerCase() === 'n') { event.preventDefault(); newCard(); }
 });
 
+window.lokan.onSyncStatus(status => { syncInfo = status; renderSyncLabel(); const statusText = $('#sync-status-text'); if (statusText) statusText.textContent = `${t({ local:'syncLocal', connected:'syncConnected', syncing:'syncInProgress', offline:'syncOffline', needsAuth:'syncNeedsAuth', error:'syncOffline' }[status.status] || 'syncLocal')}${status.error ? ` · ${status.error}` : ''}`; });
+window.lokan.onSyncState(result => acceptState(result));
+
 try {
   const loaded = await window.lokan.load();
-  state = normalizeState(loaded.state);
+  authoritativeState = normalizeState(loaded.state);
+  state = authoritativeState;
+  stateSequence = loaded.sequence;
+  syncInfo = await window.lokan.syncStatus();
   render();
   if (loaded.recovered) toast(t('recovered'));
 } catch (error) {
