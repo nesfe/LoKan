@@ -6,9 +6,9 @@
 
 | Система | Файл релиза |
 | --- | --- |
-| Windows x64 | `LoKan-*-win-x64.exe` |
+| Windows x64 | `LoKan.Setup.*.exe` |
 | macOS Apple Silicon | `LoKan-*-arm64.dmg` |
-| macOS Intel | `LoKan-*-x64.dmg` |
+| macOS Intel | `LoKan-*.dmg` (без `arm64`) |
 | Linux x64 | `LoKan-*.AppImage` |
 
 Для Linux разрешите запуск AppImage через свойства файла или `chmod +x`. Сборки Windows и macOS пока без сертификата разработчика: система может показать предупреждение при первом запуске.
