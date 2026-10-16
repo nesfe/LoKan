@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('lokan', {
   syncNow: () => ipcRenderer.invoke('sync:now'),
   syncKeyFile: () => ipcRenderer.invoke('sync:key-file'),
   syncInvite: () => ipcRenderer.invoke('sync:invite'),
+  mcpStatus: () => ipcRenderer.invoke('mcp:status'),
+  mcpConfigure: options => ipcRenderer.invoke('mcp:configure', options),
+  mcpRotate: () => ipcRenderer.invoke('mcp:rotate'),
+  mcpCopy: () => ipcRenderer.invoke('mcp:copy'),
   onSyncStatus: callback => ipcRenderer.on('sync:status', (_event, status) => callback(status)),
   onSyncState: callback => ipcRenderer.on('sync:state', (_event, state) => callback(state))
 });

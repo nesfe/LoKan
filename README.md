@@ -26,6 +26,7 @@
 - Архив с восстановлением, светлая и тёмная темы, переключатель RU/EN под настройками.
 - Автоматическое локальное сохранение, резервная копия, экспорт и импорт JSON.
 - Необязательная синхронизация через SSH с собственным сервером. Несколько участников видят общие доски, могут назначать исполнителя, видеть автора последней правки, работать офлайн и получать изменения после подключения.
+- Локальный MCP-сервер для ИИ-клиентов: поиск и чтение досок и задач, создание и изменение задач, статусов, тегов и чек-листов, перемещение и архивирование.
 - Горячие клавиши: `N` — новая задача, `Ctrl/Cmd+K` — поиск, `Esc` — закрыть окно.
 
 ## Запуск из исходников
@@ -57,9 +58,28 @@ npm start
 
 Локальные изменения доступны без сети. После восстановления связи LoKan объединяет правки разных задач и разных полей; при одновременной правке одного поля последняя синхронизированная правка побеждает. Новые задачи получают уникальные номера внутри доски. Локальный экспорт JSON остаётся доступен для резервного копирования.
 
+## Управление через MCP
+
+Откройте **Настройки → Настроить доступ для ИИ → Включить MCP**. LoKan запустит MCP-сервер на `http://127.0.0.1:37419/mcp` (порт можно изменить). Нажмите **Копировать настройки подключения** и добавьте скопированный JSON в конфигурацию ИИ-клиента, который поддерживает MCP Streamable HTTP и заголовки авторизации. Пример структуры:
+
+```json
+{
+  "mcpServers": {
+    "lokan": {
+      "url": "http://127.0.0.1:37419/mcp",
+      "headers": { "Authorization": "Bearer <ключ из LoKan>" }
+    }
+  }
+}
+```
+
+Имя корневого поля и способ добавления HTTP-сервера зависят от ИИ-клиента; перенесите URL и заголовок в соответствующие настройки. LoKan должен быть запущен. Интеграция включается вручную и слушает только локальный интерфейс. Ключ хранится в локальном каталоге приложения в `mcp.json`, не включается в экспорт досок и не отправляется на сервер синхронизации. **Копировать настройки подключения** помещает ключ в буфер обмена; берегите его как пароль. **Сменить ключ** сразу отключает старые подключения, **Выключить MCP** закрывает локальный сервер.
+
+Инструменты MCP позволяют перечислить доски и задачи, найти задачу по номеру или UUID, создать и изменить доску, статус, тег или задачу, переместить и архивировать задачу, изменить чек-лист. Для постоянного удаления нужен параметр `confirm: true`. Изменения ИИ проходят через ту же очередь сохранения, что и действия в окне LoKan, сразу видны в интерфейсе и синхронизируются с командой, если синхронизация включена. Доступ по MCP даёт полный доступ к локальным доскам; подключайте только доверенные ИИ-клиенты.
+
 ## English
 
-LoKan is a local-first desktop kanban board for Windows, macOS, and Linux. [Download the latest release](https://github.com/nesfe/LoKan/releases/latest). It includes multiple boards, customizable statuses and WIP limits, numbered tasks, drag and drop, priorities, due dates, colors, tags, descriptions, checklists, search, filters, archive, and JSON backup. Add a web link to a task and open it directly from the card title or ↗ icon. Switch between English and Russian at the bottom of the sidebar. Optional team sync connects to your own Linux SSH server with Python 3 using a password or SSH key; no public application port is needed. Teammates need SSH access to the same Unix user. Data remains available offline and is stored on the server in SQLite when sync is enabled. The server data is not encrypted at rest.
+LoKan is a local-first desktop kanban board for Windows, macOS, and Linux. [Download the latest release](https://github.com/nesfe/LoKan/releases/latest). It includes multiple boards, customizable statuses and WIP limits, numbered tasks, drag and drop, priorities, due dates, colors, tags, descriptions, checklists, search, filters, archive, and JSON backup. Add a web link to a task and open it directly from the card title or ↗ icon. Switch between English and Russian at the bottom of the sidebar. Optional team sync connects to your own Linux SSH server with Python 3 using a password or SSH key; no public application port is needed. Teammates need SSH access to the same Unix user. Data remains available offline and is stored on the server in SQLite when sync is enabled. The server data is not encrypted at rest. To let an AI client manage boards, open **Settings → Configure AI access → Enable MCP**, then copy the connection settings into an MCP Streamable HTTP client that supports authorization headers. LoKan must remain open. The local server binds to `127.0.0.1`, requires a secret bearer key, and can be disabled or rotated in Settings.
 
 ## Лицензия
 

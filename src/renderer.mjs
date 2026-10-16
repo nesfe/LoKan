@@ -329,6 +329,37 @@ function archiveDialog() {
   });
 }
 
+async function mcpDialog() {
+  try {
+    const info = await window.lokan.mcpStatus();
+    const body = `<p class="settings-note">${tr('mcpExplanation')}</p>
+      <div class="sync-grid"><label>${tr('mcpPort')}<input id="mcp-port" type="number" min="1024" max="65535" value="${info.port}"></label></div>
+      <p class="settings-note">${tr('mcpAddress')}: <code>${escape(info.url)}</code></p>
+      <p class="settings-note">${tr(info.running ? 'mcpRunning' : info.enabled ? 'mcpFailed' : 'mcpDisabled')}${info.error ? ` · ${escape(info.error)}` : ''}</p>
+      <div class="settings-actions"><button id="mcp-toggle" type="button" class="button ${info.enabled ? 'danger' : 'primary'}">${tr(info.enabled ? 'mcpDisable' : 'mcpEnable')}</button>
+      ${info.enabled ? `<button id="mcp-apply-port" type="button" class="button secondary">${tr('mcpApplyPort')}</button>` : ''}
+      ${info.running ? `<button id="mcp-copy" type="button" class="button secondary">${tr('mcpCopy')}</button><button id="mcp-rotate" type="button" class="button secondary">${tr('mcpRotate')}</button>` : ''}</div>
+      <p class="settings-note">${tr('mcpKeyHint')}</p>`;
+    openModal('MCP', t('mcpSubtitle'), body);
+    $('#mcp-toggle').onclick = async () => {
+      try {
+        await window.lokan.mcpConfigure({ enabled: !info.enabled, port: Number($('#mcp-port').value) });
+        mcpDialog();
+      } catch (error) { toast(t('mcpError', { error: error.message })); }
+    };
+    if (info.enabled) $('#mcp-apply-port').onclick = async () => {
+      try { await window.lokan.mcpConfigure({ enabled: true, port: Number($('#mcp-port').value) }); mcpDialog(); }
+      catch (error) { toast(t('mcpError', { error: error.message })); }
+    };
+    if (info.running) {
+      $('#mcp-copy').onclick = async () => { try { await window.lokan.mcpCopy(); toast(t('mcpCopied')); } catch (error) { toast(t('mcpError', { error: error.message })); } };
+      $('#mcp-rotate').onclick = () => confirmAction(t('mcpRotate'), t('mcpRotateHint'), t('mcpRotate'), async () => {
+        try { await window.lokan.mcpRotate(); mcpDialog(); toast(t('mcpRotated')); } catch (error) { toast(t('mcpError', { error: error.message })); }
+      });
+    }
+  } catch (error) { toast(t('mcpError', { error: error.message })); }
+}
+
 function settingsDialog() {
   const b = board();
   const columns = b.columns.map((c,i) => `<div class="settings-row" data-column-row="${escape(c.id)}"><input type="color" value="${c.color}" data-column-color="${escape(c.id)}" title="${tr('columnColor')}"><input type="text" maxlength="80" value="${escape(c.name)}" data-column-name="${escape(c.id)}" aria-label="${tr('columnName')}"><input type="number" min="1" max="9999" placeholder="∞" value="${c.limit ?? ''}" data-column-limit="${escape(c.id)}" title="${tr('taskLimit')}"><button type="button" class="small-button" data-column-up="${escape(c.id)}" ${i === 0 ? 'disabled' : ''} title="${tr('moveLeft')}">←</button><button type="button" class="small-button" data-column-down="${escape(c.id)}" ${i === b.columns.length - 1 ? 'disabled' : ''} title="${tr('moveRight')}">→</button><button type="button" class="small-button danger" data-column-delete="${escape(c.id)}" ${b.columns.length === 1 ? 'disabled' : ''} title="${tr('deleteColumn')}">×</button></div>`).join('');
@@ -337,10 +368,12 @@ function settingsDialog() {
     <div class="section-title">${tr('statusesSection')} <span class="field-hint">· ${tr('noLimit')}</span></div><div class="settings-list">${columns}</div><div class="settings-add"><input id="settings-new-column" type="text" maxlength="80" placeholder="${tr('newStatusPlaceholder')}"><button id="settings-add-column" type="button" class="button secondary">${tr('add')}</button></div>
     <div class="section-title">${tr('tags')}</div><div class="settings-list">${tags || `<span class="field-hint">${tr('noTags')}</span>`}</div><div class="settings-add"><input id="settings-new-tag" type="text" maxlength="40" placeholder="${tr('newTag')}"><input id="settings-new-tag-color" type="color" class="color-input" value="${COLORS[1]}" title="${tr('tagColor')}"><button id="settings-add-tag" type="button" class="button secondary">${tr('add')}</button></div>
     <div class="section-title">${tr('syncTitle')}</div><div class="settings-actions"><button id="settings-sync" class="button secondary" type="button">${tr('syncSettings')}</button></div><p class="settings-note">${tr('syncExplanation')}</p>
+    <div class="section-title">MCP</div><div class="settings-actions"><button id="settings-mcp" class="button secondary" type="button">${tr('mcpSettings')}</button></div><p class="settings-note">${tr('mcpExplanation')}</p>
     <div class="section-title">${tr('data')}</div><div class="settings-actions"><button id="export-data" class="button secondary" type="button">${tr('exportJson')}</button><button id="import-data" class="button secondary" type="button">${tr('importJson')}</button></div><p class="settings-note">${tr('dataNote')}</p><p id="data-location" class="settings-note"></p>`;
   openModal(t('settings'), b.name, body, `<div class="right"><button type="button" class="button primary" id="settings-done">${tr('done')}</button></div>`, true);
   $('#settings-done').onclick = closeModal;
   $('#settings-sync').onclick = syncDialog;
+  $('#settings-mcp').onclick = mcpDialog;
   $('#settings-board-name').onchange = el => dispatch({ type:'board.update', name:el.target.value });
   $('#settings-board-color').onchange = el => dispatch({ type:'board.update', color:el.target.value });
   $('#delete-board').onclick = () => confirmAction(t('deleteBoardTitle'), t('deleteBoardBody', { name:b.name }), t('deleteBoard'), () => { dispatch({ type:'board.delete' }); settingsDialog(); });

@@ -9,6 +9,8 @@ app.disableHardwareAcceleration();
 let window;
 let saveQueue = Promise.resolve();
 let sync;
+let mcp;
+let mcpReady;
 let stateSequence = 0;
 const dataFile = () => path.join(app.getPath('userData'), 'lokan.json');
 const backupFile = () => path.join(app.getPath('userData'), 'lokan.backup.json');
@@ -128,6 +130,16 @@ app.whenReady().then(() => {
     clipboard.writeText(code);
     return code;
   });
+  ipcMain.handle('mcp:status', async event => { checkSender(event); await mcpReady; return mcp.status(); });
+  ipcMain.handle('mcp:configure', async (event, options) => { checkSender(event); await mcpReady; return mcp.configure(options); });
+  ipcMain.handle('mcp:rotate', async event => { checkSender(event); await mcpReady; return mcp.rotate(); });
+  ipcMain.handle('mcp:copy', async event => {
+    checkSender(event);
+    await mcpReady;
+    const connection = mcp.connection();
+    clipboard.writeText(JSON.stringify({ mcpServers: { lokan: { url: connection.url, headers: connection.headers } } }, null, 2));
+    return true;
+  });
   ipcMain.handle('link:open', async (event, value) => {
     checkSender(event);
     await saveQueue.catch(() => {});
@@ -147,7 +159,18 @@ app.whenReady().then(() => {
     }
   });
   sync.start().catch(() => {});
+  mcpReady = import('./mcp_service.mjs').then(({ McpService }) => {
+    mcp = new McpService({
+      userData: app.getPath('userData'), readLocal: readState, writeLocal: writeState, enqueueTask,
+      changed: () => sync.changed(),
+      notify: state => {
+        if (window && !window.isDestroyed()) window.webContents.send('sync:state', { state, sequence: stateSequence });
+      }
+    });
+    return mcp.load();
+  }).catch(error => console.error('MCP startup:', error));
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('before-quit', () => { mcp?.stop().catch(() => {}); });
