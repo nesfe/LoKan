@@ -1,8 +1,17 @@
 # LoKan — Local kanban board
 
-Локальная канбан-доска для Windows на Electron. Работает без аккаунта, облака и сервера. Интерфейс доступен на русском и английском языках.
+Локальная канбан-доска для Windows, macOS и Linux на Electron. Работает без аккаунта, облака и сервера. Интерфейс доступен на русском и английском языках.
 
-**[Скачать установщик Windows](https://github.com/nesfe/LoKan/releases/latest)**
+**[Скачать LoKan для своей системы](https://github.com/nesfe/LoKan/releases/latest)**
+
+| Система | Файл релиза |
+| --- | --- |
+| Windows x64 | `LoKan Setup *.exe` |
+| macOS Apple Silicon | `LoKan-*-arm64.dmg` |
+| macOS Intel | `LoKan-*-x64.dmg` |
+| Linux x64 | `LoKan-*.AppImage` |
+
+Для Linux разрешите запуск AppImage через свойства файла или `chmod +x`. Сборки Windows и macOS пока без сертификата разработчика: система может показать предупреждение при первом запуске.
 
 ![LoKan: доска с задачами и ссылкой в карточке](assets/screenshot.png)
 
@@ -27,7 +36,7 @@ npm ci
 npm start
 ```
 
-Для проверки модели данных: `npm test`. Для сборки установщика: `npm run dist:win` на Windows, `npm run dist:linux` на Linux или `npm run dist:mac` на macOS. Готовые файлы появятся в `dist/`. Windows-установщик также собирается в GitHub Actions. Подпись кода не настроена, поэтому Windows может показать предупреждение SmartScreen.
+Для проверки модели данных: `npm test`. Для сборки установщика: `npm run dist:win` на Windows, `npm run dist:linux` на Linux или `npm run dist:mac` на macOS. Готовые файлы появятся в `dist/`. GitHub Actions собирает все четыре варианта релиза.
 
 ## Хранение данных
 
@@ -37,7 +46,7 @@ npm start
 
 ## English
 
-LoKan is an offline desktop kanban board for Windows. It includes multiple boards, customizable statuses and WIP limits, numbered tasks, drag and drop, priorities, due dates, colors, tags, descriptions, checklists, search, filters, archive, and JSON backup. Add a web link to a task and open it directly from the card title or ↗ icon. Switch between English and Russian at the bottom of the sidebar. All task data stays on your device.
+LoKan is an offline desktop kanban board for Windows, macOS, and Linux. [Download the latest release](https://github.com/nesfe/LoKan/releases/latest). It includes multiple boards, customizable statuses and WIP limits, numbered tasks, drag and drop, priorities, due dates, colors, tags, descriptions, checklists, search, filters, archive, and JSON backup. Add a web link to a task and open it directly from the card title or ↗ icon. Switch between English and Russian at the bottom of the sidebar. All task data stays on your device.
 
 ## Лицензия
 

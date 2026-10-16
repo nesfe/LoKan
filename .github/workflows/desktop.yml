@@ -1,0 +1,48 @@
+name: Desktop builds
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: Windows-x64
+            command: npm run dist:win
+            files: dist/LoKan Setup *.exe
+          - os: ubuntu-latest
+            platform: Linux-x64
+            command: npm run dist:linux
+            files: dist/*.AppImage
+          - os: macos-15-intel
+            platform: macOS-x64
+            command: npm run dist:mac -- --x64
+            files: dist/*.dmg
+          - os: macos-15
+            platform: macOS-arm64
+            command: npm run dist:mac -- --arm64
+            files: dist/*.dmg
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: ${{ matrix.command }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LoKan-${{ matrix.platform }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
