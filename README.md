@@ -6,7 +6,7 @@
 
 | Система | Файл релиза |
 | --- | --- |
-| Windows x64 | `LoKan Setup *.exe` |
+| Windows x64 | `LoKan-*-win-x64.exe` |
 | macOS Apple Silicon | `LoKan-*-arm64.dmg` |
 | macOS Intel | `LoKan-*-x64.dmg` |
 | Linux x64 | `LoKan-*.AppImage` |
